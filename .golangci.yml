@@ -1,0 +1,80 @@
+# golangci-lint configuration (F-S0-03).
+#
+# The ruleset follows CLAUDE.md § 1 Go and § 8 Code quality. It is a CI gate,
+# not a recommendation: a finding fails the build.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused) plus
+  # the linters the coding standards call for by name.
+  default: standard
+  enable:
+    - bodyclose # unclosed HTTP response bodies - weekly review check 3
+    - copyloopvar
+    - errorlint # error wrapping with %w, § 1 Ground rules
+    - funlen # functions at most 40 lines, § 8
+    - gocritic
+    - gosec # § 4 Security
+    - misspell
+    - noctx # context.Context on IO, § 1 Architecture
+    - nolintlint
+    - revive
+    - unconvert
+    - unparam
+
+  settings:
+    funlen:
+      lines: 40
+      statements: 40
+      ignore-comments: true
+
+    revive:
+      rules:
+        - name: package-comments
+        - name: exported
+        - name: error-strings
+        - name: error-return
+        - name: context-as-argument
+        - name: indent-error-flow
+        - name: unreachable-code
+        # Files at most 400 lines, § 8.
+        - name: file-length-limit
+          arguments:
+            - max: 400
+              skipComments: false
+              skipBlankLines: false
+
+    gosec:
+      excludes:
+        # G104 duplicates errcheck.
+        - G104
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+  exclusions:
+    generated: lax
+    rules:
+      # Table-driven tests grow past 40 lines from the table alone, and the
+      # security rules for file paths and randomness do not apply to fixtures.
+      - path: _test\.go
+        linters:
+          - funlen
+          - gosec
+          - unparam
+
+formatters:
+  # gofmt and goimports are non-negotiable (§ 1 Ground rules) and enforced in
+  # CI, so they belong in the same gate as the linters.
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/dekorlp/fibula

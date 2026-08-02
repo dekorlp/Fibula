@@ -23,7 +23,7 @@ every coding session.
 
 | Slice | File | Status | Goal |
 |---|---|---|---|
-| S0 | [S0-repo-setup.md](S0-repo-setup.md) | Open | Repository skeleton, tooling, licenses |
+| S0 | [archive/S0-repo-setup.md](archive/S0-repo-setup.md) | Done | Repository skeleton, tooling, licenses |
 | S1 | [S1-core.md](S1-core.md) | Open | Chunking, hashing, object serialization — the format |
 | S2 | [S2-store.md](S2-store.md) | Open | Store interfaces + `fs.Store`, verification |
 | S3 | [S3-workspace.md](S3-workspace.md) | Open | Local state, space, snapshots, dirty check |

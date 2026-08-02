@@ -1,0 +1,85 @@
+# CI pipeline (F-S0-04).
+#
+# The matrix on Windows and Linux is not optional: the cross-platform
+# determinism tests (E8, F-S1-06) only mean something if both platforms
+# actually run them.
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep the toolchain in one place: go.mod is the single source of truth.
+  GO_VERSION_FILE: go.mod
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          check-latest: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # Data races are bugs (CLAUDE.md § 1 Concurrency), so -race runs on both
+      # platforms rather than only on Linux.
+      - name: Test with the race detector
+        run: go test -race ./...
+
+  lint:
+    name: lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          check-latest: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+      # gofmt and goimports are enforced, not recommended (§ 1 Ground rules).
+      # golangci-lint fmt exits non-zero when the diff is non-empty, and the
+      # diff itself is the error message.
+      - name: Check formatting
+        run: golangci-lint fmt --diff
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          check-latest: true
+
+      - name: Scan dependencies for known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

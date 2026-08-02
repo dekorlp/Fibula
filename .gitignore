@@ -1,0 +1,26 @@
+# Build output
+/fibula
+/fibula.exe
+/fibula-server
+/fibula-server.exe
+/bin/
+/dist/
+
+# Test and coverage output
+*.test
+*.out
+coverage.*
+
+# Secrets never belong in the repository (CLAUDE.md § 4 Security)
+.env
+.env.*
+!.env.example
+
+# Local workspace state of a Fibula space
+.fibula/
+
+# Editor and OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
