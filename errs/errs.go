@@ -37,4 +37,30 @@ var (
 	// itself - a file object whose chunk lengths do not add up to its size,
 	// a manifest whose entries are not sorted.
 	ErrInconsistentObject = errors.New("inconsistent object")
+
+	// ErrObjectNotFound reports a store lookup for an object that is not
+	// there.
+	ErrObjectNotFound = errors.New("object not found")
+
+	// ErrCorruptObject reports store content whose hash does not match the key
+	// it was stored under (E27). It is deliberately distinct from
+	// ErrMalformedObject: malformed means someone wrote something that is not
+	// a Fibula object, corrupt means the store handed back something other
+	// than what was asked for.
+	ErrCorruptObject = errors.New("corrupt object")
+
+	// ErrInvalidRefName reports a ref name that cannot be stored safely (E13).
+	ErrInvalidRefName = errors.New("invalid ref name")
+
+	// ErrRefNotFound reports a ref that does not exist.
+	ErrRefNotFound = errors.New("ref not found")
+
+	// ErrInvalidStore reports a store that cannot be used as asked - an empty
+	// directory name, a key that is not a well-formed object key.
+	ErrInvalidStore = errors.New("invalid store")
+
+	// ErrRefConflict reports a compare-and-swap whose expected value did not
+	// match the current one. It is never resolved by overwriting: a lost ref
+	// update is a lost working state (E13).
+	ErrRefConflict = errors.New("ref conflict")
 )
