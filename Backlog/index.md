@@ -25,7 +25,7 @@ every coding session.
 |---|---|---|---|
 | S0 | [archive/S0-repo-setup.md](archive/S0-repo-setup.md) | Done | Repository skeleton, tooling, licenses |
 | S1 | [archive/S1-core.md](archive/S1-core.md) | Done | Chunking, hashing, object serialization — the format |
-| S2 | [S2-store.md](S2-store.md) | Open | Store interfaces + `fs.Store`, verification |
+| S2 | [archive/S2-store.md](archive/S2-store.md) | Done | Store interfaces + `fs.Store`, verification |
 | S3 | [S3-workspace.md](S3-workspace.md) | Open | Local state, space, snapshots, dirty check |
 | S4 | [S4-versions.md](S4-versions.md) | Open | Version graph, refs, checkout, expiry, GC |
 | S5 | — | Sketch | Reference server, Postgres index, `s3.Store`, auth |

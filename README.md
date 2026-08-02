@@ -58,9 +58,10 @@ sovereignty requirements: self-hosted, EU, open standard.
 
 ## Status
 
-Nothing here is usable yet. The repository currently holds the specification,
-the backlog and the module skeleton; the object model is decided, the code that
-implements it is being written slice by slice.
+Not usable as a tool yet, but the foundation is in place: the object format,
+the chunker and the store all work and are tested end to end. What is missing
+is everything that turns them into something you run — the workspace, the
+snapshots, the version graph and the CLI.
 
 - [refinements/](refinements/) — **the source of truth.** Architectural
   decisions live here as numbered entries (`E1`, `E2`, …), referenceable from
@@ -81,7 +82,7 @@ no Postgres required.
 | `chunk/`, `hash/`, `path/`, `manifest/`, `graph/` | core — deterministic, pure, no network, no database, no filesystem layout |
 | `format/`, `tuning/` | the constants catalogue: format parameters vs. tuning parameters, strictly separated |
 | `errs/` | the sentinel errors of the core, centrally so that callers can classify a failure without importing the layer it came from |
-| `store/` | the storage abstraction; backends live behind it |
+| `store/` | the storage abstraction; `store/fs` is the filesystem backend — one binary, one directory, done |
 | `client/` | sync engine, local cache, space manager |
 | `cmd/fibula/` | the command line client |
 | `internal/` | server internals — not importable, and the AGPL side of the boundary below |
