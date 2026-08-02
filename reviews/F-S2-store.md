@@ -180,6 +180,31 @@ the distinct chunks — and says so, because intra-file dedup is worth showing.
   ref that becomes invalid through a future tightening of the name rules would
   quietly disappear from listings.
 
+## Found by CI after the review was written
+
+Appended rather than split into a second document, because it belongs to this
+slice and the slice is not merged yet. Nothing above was rewritten.
+
+**govulncheck failed on the first CI run: GO-2026-4602**, "FileInfo can escape
+from a Root in os", present in `os@go1.25` and fixed in `os@go1.25.8`. The call
+path it reported is real — `fs.refStore.List` uses `filepath.WalkDir`, which
+reaches `os.ReadDir`. S1 never triggered it because no code walked a directory.
+
+The reason it was reachable at all is a CI detail worth knowing: **`setup-go`
+treats the `go` directive in `go.mod` as an exact version, not as a floor.** So
+`go 1.25.0` meant CI genuinely built with 1.25.0 and would have kept doing so
+as patch releases appeared. Raising the directive to `1.25.8` is therefore the
+actual fix rather than a workaround — and it is the honest one, since `go.mod`
+is what a studio embedding the client library reads as the minimum.
+
+That coupling is now written into the workflow, so the next reader does not
+mistake the pin for bookkeeping: a standard-library vulnerability surfaces as a
+red `govulncheck` job and is fixed by raising the directive. All four jobs are
+green after the bump.
+
+I could not verify this locally — the vulnerability database at `vuln.go.dev`
+is unreachable from this environment — so CI was the only check available.
+
 ## Open questions
 
 1. **The GraphID placement is still unanswered** (E21 versus E11 and the E33
