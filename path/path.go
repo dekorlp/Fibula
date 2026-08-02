@@ -13,9 +13,17 @@ import (
 	"github.com/dekorlp/fibula/format"
 )
 
-// folder does full Unicode case folding, which is a good deal more than
-// ToLower: it is what makes "STRASSE" and "strasse" compare equal.
-var folder = cases.Fold()
+// newFolder returns a caser doing full Unicode case folding, which is a good
+// deal more than ToLower: it is what makes "STRASSE" and "strasse" compare
+// equal.
+//
+// It is constructed per call rather than kept in a package variable. x/text
+// states that "a Caser may be stateful and should therefore not be shared
+// between goroutines"; the fold caser happens to be stateless today, so a
+// shared one would work — but only by implementation detail, and manifest
+// parsing is exactly the code path a sync engine will run in parallel. The
+// caser is one small allocation and is reused across all paths within a call.
+func newFolder() cases.Caser { return cases.Fold() }
 
 // Normalize brings a path into the canonical Fibula form and validates it
 // (E8). The separator must already be "/" — see Validate for why converting
@@ -99,14 +107,16 @@ func validateSegments(p string) error {
 // FoldKey returns the case-folded form of p, the key two paths collide on
 // under E8.4. It is not a path and must never be stored or restored — Fibula
 // keeps the original case (E8.4), this only detects the clash.
-func FoldKey(p string) string { return folder.String(p) }
+func FoldKey(p string) string { return newFolder().String(p) }
 
 // CheckCollisions reports the first pair of paths that differ only in case.
 // The input does not have to be sorted.
 func CheckCollisions(paths []string) error {
+	folder := newFolder()
+
 	seen := make(map[string]string, len(paths))
 	for _, p := range paths {
-		key := FoldKey(p)
+		key := folder.String(p)
 		if other, dup := seen[key]; dup && other != p {
 			return fmt.Errorf("%w: %q and %q", errs.ErrCaseCollision, other, p)
 		}

@@ -42,7 +42,7 @@ type Manifest struct {
 
 // Marshal renders the manifest in its canonical form.
 func (m Manifest) Marshal() ([]byte, error) {
-	if err := m.validate(); err != nil {
+	if err := m.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -75,13 +75,14 @@ func UnmarshalManifest(data []byte) (Manifest, error) {
 		m.Entries = append(m.Entries, entry)
 	}
 
-	return m, m.validate()
+	return m, m.Validate()
 }
 
+// parseEntry does not validate the path: Validate covers every entry once the
+// manifest is assembled, and doing it here as well meant walking every path
+// twice - a measurable cost on a 50,000-entry manifest, for a second opinion
+// on the same string.
 func parseEntry(fields []string) (Entry, error) {
-	if err := path.Validate(fields[0]); err != nil {
-		return Entry{}, err
-	}
 	fileID, err := hash.ParseFileID(fields[1])
 	if err != nil {
 		return Entry{}, fmt.Errorf("file id for %q: %w", fields[0], err)
@@ -104,7 +105,15 @@ func (m Manifest) ID() (hash.ManifestID, error) {
 	return hash.Manifest(data), nil
 }
 
-func (m Manifest) validate() error {
+// Validate reports whether the manifest satisfies every invariant the format
+// demands: valid, sorted, unique and collision-free paths, no negative sizes,
+// no missing file IDs.
+//
+// It is exported so that a caller can check a manifest without serializing it.
+// Marshaling a 50,000-entry manifest allocates several megabytes, and using
+// that as a validity check - build it, throw it away, build it again at the
+// call site - was exactly what manifest.Builder used to do.
+func (m Manifest) Validate() error {
 	paths := make([]string, 0, len(m.Entries))
 
 	for i, entry := range m.Entries {

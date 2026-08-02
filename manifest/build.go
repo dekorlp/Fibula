@@ -69,7 +69,7 @@ func (b *Builder) Build() (object.Manifest, error) {
 	sort.Slice(entries, func(i, j int) bool { return path.Less(entries[i].Path, entries[j].Path) })
 
 	m := object.Manifest{Entries: entries}
-	if _, err := m.Marshal(); err != nil {
+	if err := m.Validate(); err != nil {
 		return object.Manifest{}, err
 	}
 	return m, nil
