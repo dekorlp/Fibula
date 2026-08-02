@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -31,7 +32,22 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:    "an unknown command is a usage error",
-			args:    []string{"snapshot"},
+			args:    []string{"teleport"},
+			wantErr: errUsage,
+		},
+		{
+			name:    "space needs a subcommand",
+			args:    []string{"space"},
+			wantErr: errUsage,
+		},
+		{
+			name:    "an unknown space subcommand is a usage error",
+			args:    []string{"space", "vacuum"},
+			wantErr: errUsage,
+		},
+		{
+			name:    "init needs a store",
+			args:    []string{"init"},
 			wantErr: errUsage,
 		},
 	}
@@ -40,7 +56,7 @@ func TestRun(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
 
-			err := run(tc.args, &out)
+			err := run(context.Background(), tc.args, &out)
 
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
@@ -49,5 +65,22 @@ func TestRun(t *testing.T) {
 				t.Errorf("output = %q, want it to contain %q", out.String(), tc.wantOutput)
 			}
 		})
+	}
+}
+
+func TestHumanBytes(t *testing.T) {
+	tests := map[int64]string{
+		0:                      "0 B",
+		512:                    "512 B",
+		1024:                   "1.0 KiB",
+		1536:                   "1.5 KiB",
+		1024 * 1024:            "1.0 MiB",
+		3 * 1024 * 1024 * 1024: "3.0 GiB",
+	}
+
+	for n, want := range tests {
+		if got := humanBytes(n); got != want {
+			t.Errorf("humanBytes(%d) = %q, want %q", n, got, want)
+		}
 	}
 }
