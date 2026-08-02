@@ -27,7 +27,7 @@ every coding session.
 | S1 | [archive/S1-core.md](archive/S1-core.md) | Done | Chunking, hashing, object serialization — the format |
 | S2 | [archive/S2-store.md](archive/S2-store.md) | Done | Store interfaces + `fs.Store`, verification |
 | S3 | [archive/S3-workspace.md](archive/S3-workspace.md) | Done | Local state, space, snapshots, dirty check |
-| S4 | [S4-versions.md](S4-versions.md) | Open | Version graph, refs, checkout, expiry, GC |
+| S4 | [archive/S4-versions.md](archive/S4-versions.md) | Done | Version graph, refs, checkout, expiry, GC |
 | S5 | — | Sketch | Reference server, Postgres index, `s3.Store`, auth |
 | S6 | — | Sketch | Dependency graph, extractors, partial checkout |
 
@@ -40,6 +40,13 @@ binary path) — no server, no S3, no Postgres required.
 That is the point where phase 1 actually begins: versioning real Blender
 projects and discovering the requirements that no amount of planning would have
 produced.
+
+**Reached on 2026-08-02, with one part of it outstanding.** The mechanism works
+end to end ([TP-001](../test-plans/TP-001-self-hosting-dry-run.md)), but the
+acceptance run used synthetic assets rather than a real Blender project. The
+dedup rate on real asset formats, the behaviour at project scale and the
+behaviour on a network share are unmeasured. That run is the first task of
+phase 1 proper, and its findings are the input for S5 and S6.
 
 ## S5 and S6 are deliberately unplanned
 
