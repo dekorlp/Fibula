@@ -1,0 +1,4 @@
+fibula-graph v1
+extractor	blender	0.1.0	.blend
+edge	levels/level_01.blend	assets/char/hero_diffuse.png	texture
+edge	levels/level_01.blend	assets/char/hero_mesh.fbx	mesh

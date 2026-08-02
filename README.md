@@ -77,8 +77,10 @@ no Postgres required.
 
 | Path | |
 |---|---|
-| `chunk/`, `hash/`, `manifest/`, `graph/` | core — deterministic, pure, no network, no database, no filesystem layout |
+| `object/` | the five object types and their canonical text serialization — the format itself |
+| `chunk/`, `hash/`, `path/`, `manifest/`, `graph/` | core — deterministic, pure, no network, no database, no filesystem layout |
 | `format/`, `tuning/` | the constants catalogue: format parameters vs. tuning parameters, strictly separated |
+| `errs/` | the sentinel errors of the core, centrally so that callers can classify a failure without importing the layer it came from |
 | `store/` | the storage abstraction; backends live behind it |
 | `client/` | sync engine, local cache, space manager |
 | `cmd/fibula/` | the command line client |
