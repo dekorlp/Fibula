@@ -19,6 +19,14 @@ concurrency:
 
 env:
   # Keep the toolchain in one place: go.mod is the single source of truth.
+  #
+  # setup-go treats the go directive as an exact version, not a floor, so the
+  # version in go.mod is what CI actually builds with. That makes the directive
+  # a security statement rather than bookkeeping: a vulnerability in the
+  # standard library shows up as a red govulncheck job and is fixed by raising
+  # it. That is the intended workflow, not a nuisance - it also means the
+  # minimum go.mod advertises to anyone embedding the client library is a
+  # version without known holes.
   GO_VERSION_FILE: go.mod
 
 jobs:
