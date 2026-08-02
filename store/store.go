@@ -46,6 +46,32 @@ func GraphKey(id hash.GraphID) Key { return Key{format.TypeGraph, id.String()} }
 // SignatureKey returns the store key of a signature object.
 func SignatureKey(id hash.SignatureID) Key { return Key{format.TypeSignature, id.String()} }
 
+// ParseKey rebuilds a key from a stored type name and digest.
+//
+// It exists for garbage collection, which has to turn what it finds in a
+// backend back into keys. It validates rather than trusts: the type must be
+// one of the six, and the digest must be the canonical rendering (E34) - this
+// is the one door into Key that does not start from a typed ID, so it is the
+// one that has to check.
+func ParseKey(kind, digest string) (Key, bool) {
+	switch format.ObjectType(kind) {
+	case format.TypeChunk, format.TypeFile, format.TypeManifest,
+		format.TypeVersion, format.TypeGraph, format.TypeSignature:
+	default:
+		return Key{}, false
+	}
+
+	if len(digest) != format.HashHexLen {
+		return Key{}, false
+	}
+	for i := 0; i < len(digest); i++ {
+		if c := digest[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return Key{}, false
+		}
+	}
+	return Key{kind: format.ObjectType(kind), digest: digest}, true
+}
+
 // Type reports which kind of object the key names.
 func (k Key) Type() format.ObjectType { return k.kind }
 
