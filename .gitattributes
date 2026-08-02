@@ -1,0 +1,20 @@
+# Canonical line endings across the repository.
+#
+# Object model E33 pins LF as a serialization rule for every Fibula object.
+# With core.autocrlf active, Git would rewrite checked-in files to CRLF on
+# checkout - which silently breaks byte-exact fixtures and makes the
+# cross-platform determinism tests (E8, F-S1-06) fail on Windows only.
+* text=auto eol=lf
+
+# Golden vectors and test fixtures are byte-exact by definition: Git must not
+# inspect or convert them at all. A "fixed" fixture is a broken format.
+testdata/** -text
+*.golden -text
+
+# Binary test assets used for chunker and round-trip tests.
+*.png binary
+*.jpg binary
+*.exr binary
+*.fbx binary
+*.blend binary
+*.wav binary
