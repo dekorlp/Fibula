@@ -59,6 +59,22 @@ var (
 	// directory name, a key that is not a well-formed object key.
 	ErrInvalidStore = errors.New("invalid store")
 
+	// ErrInvalidIgnore reports an unusable line in a .fibulaignore file (E18).
+	ErrInvalidIgnore = errors.New("invalid ignore pattern")
+
+	// ErrDirty reports that a space cannot be cleared because the data-loss
+	// check did not pass (E17, CLAUDE.md invariant 6). It is always fatal to
+	// the operation: when in doubt, abort.
+	ErrDirty = errors.New("working directory is not safe to clear")
+
+	// ErrNotASpace reports a directory that is not a Fibula space.
+	ErrNotASpace = errors.New("not a fibula space")
+
+	// ErrUnsafePath reports a manifest path that must not be written to disk
+	// (CLAUDE.md section 4). Manifest paths are untrusted input even in
+	// single-user operation.
+	ErrUnsafePath = errors.New("unsafe path")
+
 	// ErrRefConflict reports a compare-and-swap whose expected value did not
 	// match the current one. It is never resolved by overwriting: a lost ref
 	// update is a lost working state (E13).

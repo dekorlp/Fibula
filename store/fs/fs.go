@@ -38,13 +38,32 @@ const (
 	filePerm = 0o644
 )
 
-// Open returns an object store rooted at dir, with verification wired in.
+// Create initializes a store at dir and returns it. It is idempotent: creating
+// over an existing store is not an error, because the layout is the same
+// either way.
+func Create(dir string) (store.ObjectStore, error) {
+	s, err := open(dir, true)
+	if err != nil {
+		return nil, err
+	}
+	return store.Verified(s), nil
+}
+
+// Open returns an existing object store rooted at dir, with verification wired
+// in.
+//
+// It refuses a directory that is not already a store, and that refusal is a
+// safety property rather than pedantry. If opening created the layout on
+// demand, a store on an unmounted network share would come back as an empty
+// but valid store - and a caller asking "does the store still have my data"
+// would be told no, rather than being told the store is gone. Those two
+// answers must never be confused before anything is deleted (E17).
 //
 // The verifying wrapper is applied here rather than left to the caller, so
 // that there is no way to obtain an unverified store from this package — a
 // backend cannot forget the check it is not able to skip (E27, F-S2-02).
 func Open(dir string) (store.ObjectStore, error) {
-	s, err := open(dir)
+	s, err := open(dir, false)
 	if err != nil {
 		return nil, err
 	}
@@ -55,14 +74,14 @@ func Open(dir string) (store.ObjectStore, error) {
 // path only (E25). Whoever calls this takes on the reference check that must
 // precede any delete.
 func OpenGC(dir string) (store.GCStore, error) {
-	s, err := open(dir)
+	s, err := open(dir, false)
 	if err != nil {
 		return nil, err
 	}
 	return store.VerifiedGC(s), nil
 }
 
-func open(dir string) (*objectStore, error) {
+func open(dir string, create bool) (*objectStore, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("%w: empty store directory", errs.ErrInvalidStore)
 	}
@@ -71,6 +90,15 @@ func open(dir string) (*objectStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve store directory: %w", err)
 	}
+
+	if !create {
+		info, err := os.Stat(filepath.Join(abs, objectsDir))
+		if err != nil || !info.IsDir() {
+			return nil, fmt.Errorf("%w: %s is not a store", errs.ErrInvalidStore, abs)
+		}
+		return &objectStore{root: abs}, nil
+	}
+
 	for _, sub := range []string{objectsDir, tempDir} {
 		if err := os.MkdirAll(filepath.Join(abs, sub), dirPerm); err != nil {
 			return nil, fmt.Errorf("create store directory: %w", err)

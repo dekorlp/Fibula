@@ -58,10 +58,11 @@ sovereignty requirements: self-hosted, EU, open standard.
 
 ## Status
 
-Not usable as a tool yet, but the foundation is in place: the object format,
-the chunker and the store all work and are tested end to end. What is missing
-is everything that turns them into something you run — the workspace, the
-snapshots, the version graph and the CLI.
+Usable, and not yet trustworthy enough to rely on. The object format, the
+chunker, the store and the working copy all work end to end: you can `init` a
+space, `snapshot` it, `space clear` it and `restore` it against a plain
+directory. What is missing is the version graph — deliberate versions, named
+history, checkout, expiry and garbage collection — and everything remote.
 
 - [refinements/](refinements/) — **the source of truth.** Architectural
   decisions live here as numbered entries (`E1`, `E2`, …), referenceable from
@@ -83,7 +84,7 @@ no Postgres required.
 | `format/`, `tuning/` | the constants catalogue: format parameters vs. tuning parameters, strictly separated |
 | `errs/` | the sentinel errors of the core, centrally so that callers can classify a failure without importing the layer it came from |
 | `store/` | the storage abstraction; `store/fs` is the filesystem backend — one binary, one directory, done |
-| `client/` | sync engine, local cache, space manager |
+| `client/` | the working copy: local state, status cache, snapshots, the dirty check, restore |
 | `cmd/fibula/` | the command line client |
 | `internal/` | server internals — not importable, and the AGPL side of the boundary below |
 

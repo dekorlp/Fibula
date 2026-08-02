@@ -1,16 +1,21 @@
 // Command fibula is the Fibula command line client.
 //
 // The CLI is thin orchestration only and carries no format logic (CLAUDE.md
-// section Architecture and layering). At this point it is a skeleton: the
-// command set is deliberately open (CLAUDE.md section Deliberately open), so
-// only version and help exist.
+// section Architecture and layering). Command names are explicitly open
+// (CLAUDE.md section Deliberately open), so these are a starting point rather
+// than a promise.
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/user"
+	"time"
+
+	"github.com/dekorlp/fibula/client"
 )
 
 // version is the client version. Phase 1 makes no compatibility promise, so
@@ -23,19 +28,23 @@ Usage:
   fibula <command> [arguments]
 
 Commands:
-  version    print the client version
-  help       print this message
+  init <store>       create a space here, pointing at a store directory
+  status             what changed since the last snapshot
+  snapshot           record the working directory as an auto snapshot
+  space check        report whether the space could be cleared safely
+  space clear        delete asset files that are provably in the store
+  restore            write the current version back into the working directory
+  version            print the client version
+  help               print this message
 
 Phase 1: unstable, no compatibility guarantees.
 `
 
-// errUsage reports a command line the client does not understand. It is
-// returned rather than printed so that main stays the only place that decides
-// the exit code.
+// errUsage reports a command line the client does not understand.
 var errUsage = errors.New("unknown command")
 
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "fibula:", err)
 		if errors.Is(err, errUsage) {
 			fmt.Fprint(os.Stderr, "\n", usage)
@@ -44,9 +53,9 @@ func main() {
 	}
 }
 
-// run executes one command and writes its output to out. It exists separately
-// from main so that the command dispatch is testable without a process.
-func run(args []string, out io.Writer) error {
+// run executes one command. It exists separately from main so that the command
+// dispatch is testable without a process.
+func run(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		_, err := fmt.Fprint(out, usage)
 		return err
@@ -59,7 +68,258 @@ func run(args []string, out io.Writer) error {
 	case "help", "-h", "--help":
 		_, err := fmt.Fprint(out, usage)
 		return err
+	case "init":
+		return runInit(args[1:], out)
+	case "status":
+		return runStatus(ctx, out)
+	case "snapshot":
+		return runSnapshot(ctx, out)
+	case "space":
+		return runSpace(ctx, args[1:], out)
+	case "restore":
+		return runRestore(ctx, out)
 	default:
 		return fmt.Errorf("%w: %q", errUsage, args[0])
 	}
+}
+
+func runInit(args []string, out io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("%w: init needs exactly one store directory", errUsage)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("current directory: %w", err)
+	}
+	space, err := client.Init(cwd, args[0])
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(out, "space created in %s, store %s\n", space.Root(), space.Config().Store)
+	return err
+}
+
+func runStatus(ctx context.Context, out io.Writer) error {
+	space, ignore, err := openHere()
+	if err != nil {
+		return err
+	}
+
+	status, err := space.Status(ctx, ignore)
+	if err != nil {
+		return err
+	}
+
+	if status.IsClean() {
+		_, err := fmt.Fprintf(out, "clean, %d files unchanged\n", status.Unchanged)
+		return err
+	}
+
+	printList(out, "added", status.Added)
+	printList(out, "modified", status.Modified)
+	printList(out, "removed", status.Removed)
+	_, err = fmt.Fprintf(out, "%d unchanged\n", status.Unchanged)
+	return err
+}
+
+func runSnapshot(ctx context.Context, out io.Writer) error {
+	space, ignore, err := openHere()
+	if err != nil {
+		return err
+	}
+
+	author, err := currentAuthor()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	result, err := space.Snapshot(ctx, ignore, client.SnapshotOptions{
+		Author: author,
+		Expiry: now.AddDate(0, 6, 0),
+		Now:    now,
+	})
+	if err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(out, "snapshot %s\n  %d files, %d read and chunked, %s written\n",
+		result.Version, result.Files, result.Hashed, humanBytes(result.Uploaded)); err != nil {
+		return err
+	}
+	return reportBudget(ctx, space, ignore, out)
+}
+
+// reportBudget suggests clearing when the budget is reached. It never clears:
+// the space manager suggests, the user decides (E15).
+func reportBudget(ctx context.Context, space *client.Space, ignore *client.Ignore, out io.Writer) error {
+	used, reached, err := space.Budget(ctx, ignore)
+	if err != nil || !reached {
+		return err
+	}
+
+	_, err = fmt.Fprintf(out,
+		"\nthe working directory holds %s, at or above the configured budget of %s\n"+
+			"everything is snapshotted; `fibula space clear` frees the local copy\n",
+		humanBytes(used), humanBytes(space.Config().Budget))
+	return err
+}
+
+func runSpace(ctx context.Context, args []string, out io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("%w: space needs a subcommand, check or clear", errUsage)
+	}
+
+	switch args[0] {
+	case "check":
+		return runSpaceCheck(ctx, out)
+	case "clear":
+		return runSpaceClear(ctx, args[1:], out)
+	default:
+		return fmt.Errorf("%w: space %q", errUsage, args[0])
+	}
+}
+
+func runSpaceCheck(ctx context.Context, out io.Writer) error {
+	space, ignore, err := openHere()
+	if err != nil {
+		return err
+	}
+
+	check, err := space.CheckClear(ctx, ignore)
+	if err != nil {
+		return err
+	}
+
+	printList(out, "safe to delete", check.Safe)
+	printList(out, "not versioned yet, would be snapshotted first", check.Unversioned)
+	if len(check.Ignored) > 0 {
+		if _, err := fmt.Fprintf(out, "%s of ignored files would stay in place\n",
+			humanBytes(check.IgnoredBytes)); err != nil {
+			return err
+		}
+	}
+	if !check.OK() {
+		return check.Err()
+	}
+
+	_, err = fmt.Fprintln(out, "the space can be cleared")
+	return err
+}
+
+func runSpaceClear(ctx context.Context, args []string, out io.Writer) error {
+	space, ignore, err := openHere()
+	if err != nil {
+		return err
+	}
+
+	opts := client.ClearOptions{Now: time.Now()}
+	for _, arg := range args {
+		if arg != "--include-ignored" {
+			return fmt.Errorf("%w: space clear %q", errUsage, arg)
+		}
+		opts.IncludeIgnored = true
+	}
+	if opts.Author, err = currentAuthor(); err != nil {
+		return err
+	}
+
+	result, err := space.Clear(ctx, ignore, opts)
+	if err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(out, "deleted %d files, %s freed\n",
+		result.Deleted, humanBytes(result.DeletedBytes)); err != nil {
+		return err
+	}
+	if result.Snapshotted > 0 {
+		if _, err := fmt.Fprintf(out, "%d files were not versioned and were snapshotted first\n",
+			result.Snapshotted); err != nil {
+			return err
+		}
+	}
+	if result.Ignored > 0 {
+		if _, err := fmt.Fprintf(out,
+			"%s of ignored files not deleted, --include-ignored to include them\n",
+			humanBytes(result.IgnoredBytes)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runRestore(ctx context.Context, out io.Writer) error {
+	space, _, err := openHere()
+	if err != nil {
+		return err
+	}
+
+	result, err := space.Restore(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(out, "restored %d files, %s\n", result.Files, humanBytes(result.Bytes))
+	return err
+}
+
+func openHere() (*client.Space, *client.Ignore, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, nil, fmt.Errorf("current directory: %w", err)
+	}
+
+	space, err := client.Open(cwd)
+	if err != nil {
+		return nil, nil, err
+	}
+	ignore, err := client.LoadIgnore(space.Root())
+	if err != nil {
+		return nil, nil, err
+	}
+	return space, ignore, nil
+}
+
+// currentAuthor is the account the version is recorded under. The server
+// validates it on push and rejects a mismatch rather than correcting it (E30),
+// so getting it from the operating system is a starting point and not an
+// identity system.
+func currentAuthor() (string, error) {
+	u, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("determine the current user: %w", err)
+	}
+	if u.Username == "" {
+		return "", errors.New("the current user has no name")
+	}
+	return u.Username, nil
+}
+
+func printList(out io.Writer, label string, paths []string) {
+	if len(paths) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "%s (%d):\n", label, len(paths)) //nolint:errcheck // reported by the caller's final write
+	for _, p := range paths {
+		fmt.Fprintf(out, "  %s\n", p) //nolint:errcheck // see above
+	}
+}
+
+// humanBytes renders a size the way a person reads it. Binary units, because
+// that is what the chunk parameters and the budget are expressed in.
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+
+	div, exp := int64(unit), 0
+	for size := n / unit; size >= unit && exp < 4; size /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTP"[exp])
 }
