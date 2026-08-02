@@ -95,6 +95,25 @@ empty stream produces **no chunks at all** — its file object has size 0 and an
 empty chunk list, and its FileID is still well defined because it is the hash of
 the content (E3), not of the list.
 
+*Constant runs, observed while implementing F-S1-02 and recorded here because
+it is a property of the choice made in E36:* a run of identical bytes hits one
+of two extremes, and both are acceptable.
+
+- **Fill byte `0x00`:** the hash sits on its fixed point. Rotating zero leaves
+  zero, and the departing and arriving table entries are the same value and
+  cancel — so the hash stays zero, every position past the minimum matches the
+  mask, and the cut lands at **exactly the minimum**.
+- **Any other fill byte:** the hash never matches and the cut lands at the
+  **maximum**.
+
+Neither is a defect. In both cases the resulting chunks are byte-identical, so
+a gigabyte of padding costs exactly one chunk in the store — which is the
+outcome dedup is supposed to produce. The only cost in the `0x00` case is a
+chunk list four times longer for that region, which is bounded and small. This
+is deliberately **not** worked around with a non-zero seed: a seed would be one
+more magic value in the format's neighbourhood, bought for a case that already
+behaves well.
+
 ## E39 — The Buzhash table is derived from BLAKE3, not checked in as a literal
 
 `table[i] = LittleEndian.Uint64(out[8i : 8i+8])`, where `out` is 2048 bytes of
