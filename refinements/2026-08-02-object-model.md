@@ -345,6 +345,36 @@ delta-friendly (E6) and edges change on a different rhythm than file listings.
 Through the reference the graph still belongs to the version state — checking out
 an old version yields the graph that was valid then.
 
+#### Addendum 2026-08-02 — the GraphID sits on the version, not on the manifest
+
+**This entry contradicted itself.** The heading and the sentence above place the
+GraphID on the *manifest*; the field table of [E11](#e11--version-object-with-a-parent-list)
+lists it as a field of the *version*, and the serialization example in
+[E33](#e33--framing-and-canonicality-rules) shows a `graph` line inside
+`fibula-version v1`. Three passages, two answers.
+
+Resolved in favour of **the version**, which is what S1 implemented and what
+S2 stored. The reasons, in order of weight:
+
+1. **E11 and E33 are the passages that define the format**; this one discusses
+   the concept. Where they disagree, the normative field list and the worked
+   example win.
+2. **A manifest can be shared by several versions.** Promotion (E12) creates a
+   new version referencing the same manifest, so a graph on the manifest could
+   not be updated without also rewriting the manifest — and the manifest is the
+   object E6 works hardest to keep delta-friendly.
+3. The rationale given in E21 itself argues this way: the graph is kept out of
+   the manifest so the manifest stays small. Putting the *reference* there is
+   the weaker version of the same objection.
+
+*What does not change:* the graph remains its own content-addressed object,
+optional, advisory (E22), and part of the version state — checking out an old
+version still yields the graph that was valid then.
+
+*Cost of reversing this:* one field in `object.Manifest` and one in
+`object.Version`, plus their golden vectors. It is cheap until a real store
+holds versions with graphs, which phase 1 does not yet produce.
+
 ### E22 — Advisory, never normative
 
 The graph blocks no operation, it informs. An outdated extractor must not stop
