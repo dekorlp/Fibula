@@ -1,0 +1,8 @@
+fibula-version v1
+manifest	4b1406047204c56ef151399ee4e3f23d102f3c89546c97adb8c8efc5d22e102d
+parent	9227d5b9de8b06388dcdc8f4cfea683d9dacecb932d625acc1113c9aad35323c
+author	dennis
+time	2026-08-02T14:20:31Z
+graph	7f78d61700b49708b6f31acabf1d092b466b2759cb502aa88a2ce99798883354
+message
+Reworked hero rig, repacked UVs
