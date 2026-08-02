@@ -19,12 +19,12 @@ func refPath(dir string, name store.RefName) string {
 	return filepath.Join(dir, refsDir, string(name.Scope()), filepath.FromSlash(name.Name()))
 }
 
-func openRefsIn(t *testing.T, dir string) store.RefStore {
+func newRefStoreIn(t *testing.T, dir string) store.RefStore {
 	t.Helper()
 
-	r, err := OpenRefs(dir)
+	r, err := CreateRefs(dir)
 	if err != nil {
-		t.Fatalf("OpenRefs: %v", err)
+		t.Fatalf("CreateRefs: %v", err)
 	}
 	return r
 }
@@ -35,7 +35,7 @@ func openRefsIn(t *testing.T, dir string) store.RefStore {
 // to barge in — barging in is how a ref update gets lost.
 func TestLockHeldByAnotherProcessBlocksAndGivesUp(t *testing.T) {
 	dir := t.TempDir()
-	r := openRefsIn(t, dir)
+	r := newRefStoreIn(t, dir)
 	name := mainRef(t)
 
 	// Stage a lock as a live competitor would hold it.
@@ -66,7 +66,7 @@ func TestLockHeldByAnotherProcessBlocksAndGivesUp(t *testing.T) {
 // so this test has to age the lock explicitly rather than wait it out.
 func TestStaleLockIsBroken(t *testing.T) {
 	dir := t.TempDir()
-	r := openRefsIn(t, dir)
+	r := newRefStoreIn(t, dir)
 	name := mainRef(t)
 
 	lockPath := refPath(dir, name) + lockSuffix
@@ -100,7 +100,7 @@ func TestStaleLockIsBroken(t *testing.T) {
 // would block every later one.
 func TestLockIsReleasedAfterUse(t *testing.T) {
 	dir := t.TempDir()
-	r := openRefsIn(t, dir)
+	r := newRefStoreIn(t, dir)
 	name := mainRef(t)
 	ctx := context.Background()
 
@@ -121,7 +121,7 @@ func TestLockIsReleasedAfterUse(t *testing.T) {
 // I", so guessing is not an option.
 func TestCorruptRefContentIsReported(t *testing.T) {
 	dir := t.TempDir()
-	r := openRefsIn(t, dir)
+	r := newRefStoreIn(t, dir)
 	name := mainRef(t)
 
 	path := refPath(dir, name)
@@ -141,7 +141,7 @@ func TestCorruptRefContentIsReported(t *testing.T) {
 // directory must not break a listing or appear as a ref.
 func TestListIgnoresForeignFiles(t *testing.T) {
 	dir := t.TempDir()
-	r := openRefsIn(t, dir)
+	r := newRefStoreIn(t, dir)
 	ctx := context.Background()
 	name := mainRef(t)
 
@@ -171,7 +171,7 @@ func TestListIgnoresForeignFiles(t *testing.T) {
 }
 
 func TestRefOperationsHonourContextCancellation(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	name := mainRef(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -191,7 +191,7 @@ func TestRefOperationsHonourContextCancellation(t *testing.T) {
 }
 
 func TestOpenRefsRejectsAnEmptyDirectory(t *testing.T) {
-	if _, err := OpenRefs(""); !errors.Is(err, errs.ErrInvalidStore) {
+	if _, err := CreateRefs(""); !errors.Is(err, errs.ErrInvalidStore) {
 		t.Errorf("err = %v, want errs.ErrInvalidStore", err)
 	}
 }

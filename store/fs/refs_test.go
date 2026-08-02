@@ -12,12 +12,12 @@ import (
 	"github.com/dekorlp/fibula/store"
 )
 
-func openRefs(t *testing.T) store.RefStore {
+func newRefStore(t *testing.T) store.RefStore {
 	t.Helper()
 
-	r, err := OpenRefs(t.TempDir())
+	r, err := CreateRefs(t.TempDir())
 	if err != nil {
-		t.Fatalf("OpenRefs: %v", err)
+		t.Fatalf("CreateRefs: %v", err)
 	}
 	return r
 }
@@ -35,7 +35,7 @@ func mainRef(t *testing.T) store.RefName {
 }
 
 func TestRefCreateAndRead(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	ctx := context.Background()
 	name := mainRef(t)
 	first := versionID("first")
@@ -55,7 +55,7 @@ func TestRefCreateAndRead(t *testing.T) {
 }
 
 func TestRefGetOfAMissingRef(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 
 	if _, err := r.Get(context.Background(), mainRef(t)); !errors.Is(err, errs.ErrRefNotFound) {
 		t.Errorf("err = %v, want errs.ErrRefNotFound", err)
@@ -90,7 +90,7 @@ func TestRefCompareAndSwapConflicts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			r := openRefs(t)
+			r := newRefStore(t)
 			name := mainRef(t)
 			tc.setup(t, r, name)
 
@@ -107,7 +107,7 @@ func TestRefCompareAndSwapConflicts(t *testing.T) {
 // one may win, and the losers must be told rather than silently dropped. A
 // lost ref update is a lost working state with no second system that knows it.
 func TestConcurrentCompareAndSwapLosesNothing(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	ctx := context.Background()
 	name := mainRef(t)
 	start := versionID("start")
@@ -165,7 +165,7 @@ func TestConcurrentCompareAndSwapLosesNothing(t *testing.T) {
 // TestConcurrentCreateLosesNothing is the same race for ref creation, where
 // the expected old value is the zero version.
 func TestConcurrentCreateLosesNothing(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	ctx := context.Background()
 	name := mainRef(t)
 
@@ -194,7 +194,7 @@ func TestConcurrentCreateLosesNothing(t *testing.T) {
 // ref; the remote ref records what the server last said. If the two shared a
 // namespace, a sync could not tell "my state" from "their state".
 func TestLocalAndRemoteRefsAreSeparate(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	ctx := context.Background()
 
 	local, err := store.LocalRef(store.DefaultRef)
@@ -229,7 +229,7 @@ func TestLocalAndRemoteRefsAreSeparate(t *testing.T) {
 }
 
 func TestRefList(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	ctx := context.Background()
 
 	for _, n := range []string{"main", "feature/rig", "archive/2026"} {
@@ -267,7 +267,7 @@ func TestRefList(t *testing.T) {
 }
 
 func TestListOfAnEmptyScope(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 
 	got, err := r.List(context.Background(), store.ScopeRemote)
 	if err != nil {
@@ -279,7 +279,7 @@ func TestListOfAnEmptyScope(t *testing.T) {
 }
 
 func TestRefDelete(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	ctx := context.Background()
 	name := mainRef(t)
 
@@ -336,7 +336,7 @@ func TestRefNameValidation(t *testing.T) {
 // TestSwapToTheZeroVersionIsRejected: a ref pointing at nothing is
 // indistinguishable from a deleted ref, and there is a Delete for that.
 func TestSwapToTheZeroVersionIsRejected(t *testing.T) {
-	r := openRefs(t)
+	r := newRefStore(t)
 	name := mainRef(t)
 
 	err := r.CompareAndSwap(context.Background(), name, hash.VersionID{}, hash.VersionID{})

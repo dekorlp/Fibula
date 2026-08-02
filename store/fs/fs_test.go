@@ -18,9 +18,9 @@ func openStore(t *testing.T) (store.ObjectStore, string) {
 	t.Helper()
 
 	dir := t.TempDir()
-	s, err := Open(dir)
+	s, err := Create(dir)
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
 	return s, dir
 }
@@ -227,6 +227,9 @@ func TestObjectStoreCannotDelete(t *testing.T) {
 
 func TestGCStoreDeletes(t *testing.T) {
 	dir := t.TempDir()
+	if _, err := Create(dir); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
 	gc, err := OpenGC(dir)
 	if err != nil {
 		t.Fatalf("OpenGC: %v", err)
@@ -282,6 +285,40 @@ func TestLayoutFansOut(t *testing.T) {
 func TestOpenRejectsAnEmptyDirectory(t *testing.T) {
 	if _, err := Open(""); !errors.Is(err, errs.ErrInvalidStore) {
 		t.Errorf("err = %v, want errs.ErrInvalidStore", err)
+	}
+}
+
+// TestOpenRefusesADirectoryThatIsNotAStore is a safety property, not
+// pedantry. If opening created the layout on demand, a store on an unmounted
+// network share would come back as an empty but valid store - and "the store
+// has none of your data" would be indistinguishable from "the store is gone".
+// Those must never be confused before anything is deleted (E17).
+func TestOpenRefusesADirectoryThatIsNotAStore(t *testing.T) {
+	empty := t.TempDir()
+
+	if _, err := Open(empty); !errors.Is(err, errs.ErrInvalidStore) {
+		t.Errorf("Open err = %v, want errs.ErrInvalidStore", err)
+	}
+	if _, err := OpenGC(empty); !errors.Is(err, errs.ErrInvalidStore) {
+		t.Errorf("OpenGC err = %v, want errs.ErrInvalidStore", err)
+	}
+	if _, err := OpenRefs(empty); !errors.Is(err, errs.ErrInvalidStore) {
+		t.Errorf("OpenRefs err = %v, want errs.ErrInvalidStore", err)
+	}
+}
+
+// TestCreateIsIdempotent: initializing over an existing store is not an error,
+// because the layout is the same either way.
+func TestCreateIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+
+	for i := range 2 {
+		if _, err := Create(dir); err != nil {
+			t.Fatalf("Create %d: %v", i, err)
+		}
+	}
+	if _, err := Open(dir); err != nil {
+		t.Errorf("Open after Create: %v", err)
 	}
 }
 

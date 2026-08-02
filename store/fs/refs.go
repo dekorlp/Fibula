@@ -38,6 +38,15 @@ const (
 // state, with no second system that still knows it — which is why this is the
 // one place in the store that needs locking at all.
 func OpenRefs(dir string) (store.RefStore, error) {
+	return openRefs(dir, false)
+}
+
+// CreateRefs initializes the ref store at dir. Like Create it is idempotent.
+func CreateRefs(dir string) (store.RefStore, error) {
+	return openRefs(dir, true)
+}
+
+func openRefs(dir string, create bool) (store.RefStore, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("%w: empty store directory", errs.ErrInvalidStore)
 	}
@@ -45,6 +54,15 @@ func OpenRefs(dir string) (store.RefStore, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolve store directory: %w", err)
+	}
+
+	if !create {
+		// Same reasoning as Open: a vanished store must not come back as an
+		// empty one, because "no refs" and "no store" are different answers
+		// and only one of them is safe to act on.
+		if info, err := os.Stat(filepath.Join(abs, objectsDir)); err != nil || !info.IsDir() {
+			return nil, fmt.Errorf("%w: %s is not a store", errs.ErrInvalidStore, abs)
+		}
 	}
 	if err := os.MkdirAll(filepath.Join(abs, refsDir), dirPerm); err != nil {
 		return nil, fmt.Errorf("create refs directory: %w", err)

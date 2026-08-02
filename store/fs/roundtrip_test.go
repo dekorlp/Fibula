@@ -79,13 +79,13 @@ func TestFullRoundTrip(t *testing.T) {
 	tree := sourceTree(t)
 	writeTree(t, sourceDir, tree)
 
-	objects, err := Open(storeDir)
+	objects, err := Create(storeDir)
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
-	refs, err := OpenRefs(storeDir)
+	refs, err := CreateRefs(storeDir)
 	if err != nil {
-		t.Fatalf("OpenRefs: %v", err)
+		t.Fatalf("CreateRefs: %v", err)
 	}
 
 	versionID := ingest(ctx, t, objects, refs, sourceDir, tree)
