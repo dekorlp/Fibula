@@ -6,7 +6,8 @@
 // centralized anyway, so that a change is a single deliberate edit instead of
 // a magic number drifting apart across packages.
 //
-// Spec: object model E3, E6; CLAUDE.md pinned point 2 and section 8.
+// Spec: object model E3, E6; chunking parameters E36 to E40; CLAUDE.md pinned
+// point 2 and section 8.
 package tuning
 
 // Binary size units, unexported so that the catalogue stays the only place
@@ -17,28 +18,45 @@ const (
 )
 
 // Chunk size bounds for asset content (CLAUDE.md pinned point 2: target size
-// 1 to 4 MB). The average is the target the rolling hash aims at; the minimum
-// and maximum are hard bounds the chunker enforces regardless of the hash, so
-// that a pathological input cannot produce chunks of a single byte or of
-// gigabytes.
+// 1 to 4 MB).
+//
+// ChunkAvgSize is the size the parameters are chosen to produce; it is not
+// itself fed to the chunker. The value the chunker uses is ChunkMaskBits, and
+// per E38 the expected size is min + 2^maskBits rather than 2^maskBits — the
+// minimum suppresses every boundary test below it. 1 MiB + 2^20 = 2 MiB.
+//
+// The maximum truncates the tail of the distribution, so that a long run of
+// identical bytes — common in uncompressed textures and audio — cannot produce
+// one gigantic chunk.
 const (
-	ChunkMinSize = 1 * miB
-	ChunkAvgSize = 2 * miB
-	ChunkMaxSize = 4 * miB
+	ChunkMinSize  = 1 * miB
+	ChunkAvgSize  = 2 * miB
+	ChunkMaxSize  = 4 * miB
+	ChunkMaskBits = 20
 )
 
 // Chunk size bounds for manifests (E6). The manifest is chunked by the same
 // machinery but aims at roughly 64 KB, because it is sorted and line based: a
 // single changed line then hits exactly one chunk, which turns a 7 MB transfer
-// on a large project into a 64 KB one.
+// on a large project into a 64 KB one. 32 KiB + 2^15 = 64 KiB (E38).
 const (
-	ManifestChunkMinSize = 32 * kiB
-	ManifestChunkAvgSize = 64 * kiB
-	ManifestChunkMaxSize = 128 * kiB
+	ManifestChunkMinSize  = 32 * kiB
+	ManifestChunkAvgSize  = 64 * kiB
+	ManifestChunkMaxSize  = 128 * kiB
+	ManifestChunkMaskBits = 15
 )
 
-// The rolling hash parameters - window size and boundary mask, and for Rabin
-// the polynomial - are deliberately absent. They are algorithm specific and
-// the algorithm itself is still open (refinements/index.md); F-S1-02 picks it
-// and records the choice as a refinement addendum. They belong in this file
-// once that decision exists, not before.
+// Buzhash parameters (E37, E39).
+const (
+	// BuzhashWindow is the number of bytes a boundary decision depends on.
+	// It equals the hash width in bits divided by 8, which puts the bytes of
+	// the window at 64 distinct rotations and makes the byte leaving the
+	// window a plain XOR — it has been rotated exactly 64 times, the identity.
+	BuzhashWindow = 64
+
+	// BuzhashTableContext is the BLAKE3 derive_key context the 256-entry
+	// buzhash table is generated from (E39). It lives here rather than in
+	// package format on purpose: changing it changes chunk boundaries and
+	// therefore dedup rate, not object identity.
+	BuzhashTableContext = "fibula buzhash table v1"
+)
