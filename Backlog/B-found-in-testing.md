@@ -40,9 +40,10 @@ Until then the field is named for what it measures.
 
 ---
 
-### F-B-02 · `space check` prints every path
+### F-B-02 · `space check` prints every path — **done 2026-08-03**
 
 **Found by:** [TP-002](../test-plans/TP-002-scale-run.md), EC-105
+**Fixed in:** `reviews/chunk-parameter-sweep.md`
 
 `fibula space check` lists all safe-to-delete paths — 3,050 lines on the test
 corpus, and one line per asset on a real project. The information a user wants
@@ -52,3 +53,7 @@ buries the problems.
 Print counts and the problem cases, with the full list behind a flag. The
 `Unversioned` and `Problems` lists must stay fully visible however long they
 are: those are the ones that decide whether data is at risk.
+
+Done as specified: the safe list is a count, `--verbose` restores it, and the
+unversioned list is never summarized. An unrecognized flag is an error rather
+than being ignored.

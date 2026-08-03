@@ -37,7 +37,8 @@ Commands:
   promote <version>  turn a snapshot into a deliberate version
   checkout <target>  put the working directory into the state of a ref or version
   diff <a> <b>       what changed between two states
-  space check        report whether the space could be cleared safely
+  space check [--verbose]
+                     report whether the space could be cleared safely
   space clear        delete asset files that are provably in the store
   restore            write the current version back into the working directory
   expire             apply the thinning schedule to the snapshot timeline
@@ -200,7 +201,7 @@ func runSpace(ctx context.Context, args []string, out io.Writer) error {
 
 	switch args[0] {
 	case "check":
-		return runSpaceCheck(ctx, out)
+		return runSpaceCheck(ctx, args[1:], out)
 	case "clear":
 		return runSpaceClear(ctx, args[1:], out)
 	default:
@@ -208,7 +209,15 @@ func runSpace(ctx context.Context, args []string, out io.Writer) error {
 	}
 }
 
-func runSpaceCheck(ctx context.Context, out io.Writer) error {
+func runSpaceCheck(ctx context.Context, args []string, out io.Writer) error {
+	verbose := false
+	for _, arg := range args {
+		if arg != "--verbose" {
+			return fmt.Errorf("%w: space check %q", errUsage, arg)
+		}
+		verbose = true
+	}
+
 	space, ignore, err := openHere()
 	if err != nil {
 		return err
@@ -219,7 +228,21 @@ func runSpaceCheck(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	printList(out, "safe to delete", check.Safe)
+	// The safe list is one line per asset — 3,050 on the scale run and one per
+	// file on a real project (F-B-02). It is also the least interesting of the
+	// three: it is the expected case. Summarizing it is what keeps the two
+	// lists that decide whether data is at risk visible at all.
+	if verbose {
+		printList(out, "safe to delete", check.Safe)
+	} else if len(check.Safe) > 0 {
+		if _, err := fmt.Fprintf(out, "safe to delete: %d files\n", len(check.Safe)); err != nil {
+			return err
+		}
+	}
+
+	// Unversioned is never summarized, however long it gets. These files are
+	// about to be snapshotted and then deleted, and which ones they are is
+	// exactly what a user needs to see before agreeing to that.
 	printList(out, "not versioned yet, would be snapshotted first", check.Unversioned)
 	if len(check.Ignored) > 0 {
 		if _, err := fmt.Fprintf(out, "%s of ignored files would stay in place\n",
