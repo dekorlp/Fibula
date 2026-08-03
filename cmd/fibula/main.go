@@ -37,6 +37,7 @@ Commands:
   snapshots          the snapshot timeline
   promote <version>  turn a snapshot into a deliberate version
   checkout <target>  put the working directory into the state of a ref or version
+  sync               bring the working directory onto the current state of the ref
   diff <a> <b>       what changed between two states
   space check [--verbose]
                      report whether the space could be cleared safely
@@ -54,18 +55,17 @@ Phase 1: unstable, no compatibility guarantees.
 var errUsage = errors.New("unknown command")
 
 // behindAdvice is printed alongside ErrSpaceBehind. Refusing the commit is only
-// half an answer - without this the user's next move is a checkout, which
-// throws their working directory away. Snapshotting first is safe precisely
-// because snapshots land on their own ref and cannot collide (E12, TP-005
-// TC-409), so nothing is lost while the situation is sorted out.
+// half an answer; sync is the other half (E52).
+//
+// The snapshot line stays as the cautious route: it is safe precisely because
+// snapshots land on their own ref and cannot collide (E12, TP-005 TC-409), so
+// the current directory can be preserved before anything touches it.
 const behindAdvice = `
-Your work is not lost, and it does not have to be:
+  fibula sync              bring your directory onto the current state
+  fibula snapshot          keep the current directory first, if unsure
 
-  fibula snapshot          keep the current directory on the timeline
-  fibula checkout main     take the other state
-  fibula log               see what moved
-
-There is no merge yet, so bringing both sides together is manual for now.
+Files both sides changed are left for you to decide; everything else merges
+on its own.
 `
 
 func main() {
@@ -117,6 +117,7 @@ var commands = map[string]handler{
 	"gc":        runGC,
 	"space":     runSpace,
 	"restore":   func(ctx context.Context, _ []string, out io.Writer) error { return runRestore(ctx, out) },
+	"sync":      func(ctx context.Context, _ []string, out io.Writer) error { return runSync(ctx, out) },
 }
 
 func printVersion(out io.Writer) error {
@@ -159,15 +160,20 @@ func runStatus(ctx context.Context, out io.Writer) error {
 	}
 
 	if status.IsClean() {
-		_, err := fmt.Fprintf(out, "clean, %d files unchanged\n", status.Unchanged)
-		return err
+		if _, err := fmt.Fprintf(out, "clean, %d files unchanged\n", status.Unchanged); err != nil {
+			return err
+		}
+		// Still reported: a clean directory can hold an unfinished decision.
+		return printPendingConflicts(space, out)
 	}
 
 	printList(out, "added", status.Added)
 	printList(out, "modified", status.Modified)
 	printList(out, "removed", status.Removed)
-	_, err = fmt.Fprintf(out, "%d unchanged\n", status.Unchanged)
-	return err
+	if _, err = fmt.Fprintf(out, "%d unchanged\n", status.Unchanged); err != nil {
+		return err
+	}
+	return printPendingConflicts(space, out)
 }
 
 func runSnapshot(ctx context.Context, out io.Writer) error {
