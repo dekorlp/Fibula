@@ -45,6 +45,15 @@ type Config struct {
 	// decides - deleting assets because a number was exceeded is exactly the
 	// behaviour that would make people distrust the feature.
 	Budget int64
+
+	// Author is who this space acts as: the name on its versions and on the
+	// locks it takes (E51). Empty means fall back to the OS user.
+	//
+	// It is per-space rather than global because a shared machine account
+	// would otherwise make two people indistinguishable to every lock in the
+	// project - which is exactly what an end-to-end run of F-S5a-07 walked
+	// into.
+	Author string
 }
 
 // Head is where the space currently stands (E16).
@@ -262,6 +271,9 @@ func (s *Space) SetHead(h Head) error {
 
 func writeConfig(dir string, c Config) error {
 	body := "store\t" + c.Store + "\nbudget\t" + strconv.FormatInt(c.Budget, 10) + "\n"
+	if c.Author != "" {
+		body += "author\t" + c.Author + "\n"
+	}
 	return writeFileAtomic(filepath.Join(dir, configFile), []byte(body))
 }
 
@@ -282,7 +294,7 @@ func readConfig(dir string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("config: budget: %w", err)
 	}
-	return Config{Store: fields["store"], Budget: budget}, nil
+	return Config{Store: fields["store"], Budget: budget, Author: fields["author"]}, nil
 }
 
 // parseFields reads the tab-separated key/value form used for local state.

@@ -72,7 +72,7 @@ func runLock(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	owner, err := currentAuthor()
+	owner, err := authorFor(space)
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func runUnlock(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	owner, err := currentAuthor()
+	owner, err := authorFor(space)
 	if err != nil {
 		return err
 	}
@@ -117,9 +117,46 @@ func runUnlock(ctx context.Context, args []string, out io.Writer) error {
 	return err
 }
 
+// printLostLocks reports locks this space believed it held and no longer does,
+// then forgets them so the same loss is not repeated forever.
+//
+// This is what makes E51's promise good: the holder is told by the tool rather
+// than by whoever took the lock remembering to mention it.
+func printLostLocks(ctx context.Context, space *client.Space, out io.Writer) error {
+	owner, err := authorFor(space)
+	if err != nil {
+		return err
+	}
+	lost, err := space.LostLocks(ctx, owner)
+	if err != nil || len(lost) == 0 {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(out, "\n%d of your lock(s) are gone:\n", len(lost)); err != nil {
+		return err
+	}
+	for _, l := range lost {
+		switch {
+		case l.Holder == "":
+			_, err = fmt.Fprintf(out, "  %s  (released)\n", l.Path)
+		case l.BrokenFrom == owner:
+			_, err = fmt.Fprintf(out, "  %s  taken by %s\n", l.Path, l.Holder)
+		default:
+			_, err = fmt.Fprintf(out, "  %s  now held by %s\n", l.Path, l.Holder)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return space.ForgetLostLocks(lost)
+}
+
 func runLocks(ctx context.Context, out io.Writer) error {
 	space, _, err := openHere()
 	if err != nil {
+		return err
+	}
+	if err := printLostLocks(ctx, space, out); err != nil {
 		return err
 	}
 	locks, err := space.Locks(ctx)
