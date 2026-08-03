@@ -64,11 +64,17 @@ on a second disk or a NAS share is a fully valid deployment, and the loop
 works end to end with no server, no S3 and no Postgres.
 
 What that does *not* mean is that it has been proven on real work. The
-acceptance run for the milestone
-([test-plans/TP-001](test-plans/TP-001-self-hosting-dry-run.md)) used synthetic
-assets, so the dedup rate on real `.blend` and `.exr` files, the behaviour at
-project scale and the behaviour on a network share are all still unmeasured.
-That run is what phase 1 is for.
+acceptance runs ([TP-001](test-plans/TP-001-self-hosting-dry-run.md),
+[TP-002](test-plans/TP-002-scale-run.md)) used synthetic assets. TP-002 settled
+the scale question — 3,050 files and 3.7 GiB through the whole loop, memory
+bounded at 21 MiB, restore byte-identical — and found two defects worth the run
+on its own, one of them a data-loss path in garbage collection.
+
+**The dedup rate on real `.blend` and `.exr` files, and the behaviour on a
+network share, are still unmeasured.** What TP-002 can say is where the floor
+sits: a change of any size costs about one chunk, so at 1–4 MiB chunks a 4 KB
+save rewrites ~1.7 MB. Whether that is the right floor for real asset formats is
+what phase 1 is for.
 
 Missing entirely: everything remote (server, sync, S3) and the dependency
 graph.
