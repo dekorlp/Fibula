@@ -28,7 +28,7 @@ every coding session.
 | S2 | [archive/S2-store.md](archive/S2-store.md) | Done | Store interfaces + `fs.Store`, verification |
 | S3 | [archive/S3-workspace.md](archive/S3-workspace.md) | Done | Local state, space, snapshots, dirty check |
 | S4 | [archive/S4-versions.md](archive/S4-versions.md) | Done | Version graph, refs, checkout, expiry, GC |
-| S5a | — | Refined | Multi-user on a shared store: transfer, conflicts, locking, `sync` |
+| S5a | [S5a-multi-user.md](S5a-multi-user.md) | Open | Multi-user on a shared store: transfer, conflicts, locking, `sync` |
 | S5b | — | Deferred | Reference server, Postgres index, `s3.Store`, auth |
 | S6 | — | Sketch | Dependency graph, extractors, partial checkout |
 | B | [B-found-in-testing.md](B-found-in-testing.md) | Open | Defects found in testing, outside any slice |
@@ -76,27 +76,21 @@ a real NAS, plus items that were never part of it: DCC formats besides Blender,
 a project *tree* with external textures and linked libraries (which is what S6
 exists for), and long time spans for the retention buckets.
 
-> **TP-005 also found the most severe open defect in the project: F-B-04.**
-> A commit takes its parent from head while describing the local working
-> directory, so two clients sharing a store silently overwrite each other's
-> content — no concurrency required, unrelated to SMB. It needs a decision
-> before S5, not after.
+> **TP-005 also found the most severe defect in the project so far: F-B-04.**
+> A commit took its parent from head while describing the local working
+> directory, so two clients sharing a store silently overwrote each other's
+> content — no concurrency required, unrelated to SMB. **Option (a) shipped on
+> 2026-08-03**: such a commit is now refused. The answer to "so what do I do
+> now" is S5a.
 
-## S5 and S6 are deliberately unplanned
+## S5b and S6 are deliberately unplanned
 
 Both are sketched below rather than broken into tasks. Writing detailed tickets
 for them now would be exactly the drawing-board planning that CLAUDE.md rejects
 — phase 1 is supposed to produce those requirements, not predict them.
 
-### S5a — Multi-user (refined, not yet planned into tasks)
-
-Decided in [multi-user](../refinements/2026-08-03-multi-user.md), E41–E53:
-`manifest.Merge` in the core (E42), `Head.Base` as the merge base (E43), the
-rule table (E44), transfer rather than merge because phase 1 cannot diverge
-(E45), conflict copies under `.fibula/conflicts/` (E46), optional locking that
-never blocks editing (E48–E51), and `fibula sync` as one command (E52).
-
-This is what F-B-04 (b) needs — the answer to the refusal the fix produces.
+S5a is the exception, and for a reason: it is not a prediction. Every one of its
+decisions came out of a defect a test run actually hit.
 
 ### S5b — Remote (deferred, E41)
 
