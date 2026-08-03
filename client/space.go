@@ -80,6 +80,11 @@ type Space struct {
 	// force or when a lock expires (E51).
 	settings store.SettingsStore
 
+	// locks are file reservations, the same category of mutable state as refs
+	// (E50). Nil is impossible: a store always has a lock namespace, even when
+	// locking is switched off for the project.
+	locks store.LockStore
+
 	// local holds file objects for the working tree, so that the chunk list of
 	// an unchanged file is known without re-chunking it (E16). It is a chunk
 	// list cache, not a chunk cache: a real chunk cache would double the disk
@@ -153,8 +158,12 @@ func Open(dir string) (*Space, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open store settings: %w", err)
 	}
+	locks, err := fs.OpenLocks(config.Store)
+	if err != nil {
+		return nil, fmt.Errorf("open store locks: %w", err)
+	}
 
-	return &Space{root: root, config: config, objects: objects, refs: refs, local: local, settings: settings}, nil
+	return &Space{root: root, config: config, objects: objects, refs: refs, local: local, settings: settings, locks: locks}, nil
 }
 
 func findRoot(dir string) (string, error) {
