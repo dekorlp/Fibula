@@ -1,0 +1,54 @@
+# B · Defects found in testing
+
+Items that came out of a test run rather than out of a slice, per
+[index.md](index.md): *"Bugs found during testing go straight in here with a
+reference to the test plan."*
+
+They carry `F-B-nn` IDs rather than `F-S<slice>-nn`, because they do not belong
+to a planned slice. The convention deviation is deliberate and the IDs are
+permanent like any other.
+
+Items fixed in the branch that found them are recorded in the test plan and the
+review document instead, not here.
+
+---
+
+### F-B-01 · `Put` should report whether the write was new
+
+**Spec:** E24, E29
+**Found by:** [TP-002](../test-plans/TP-002-scale-run.md), EC-104
+**Blocked on:** the first network backend
+
+`SnapshotResult.Chunked` measures the file content that was read and cut, not
+the bytes that actually reached the store. It cannot measure the latter, because
+`ObjectStore.Put` is idempotent and returns only an error — a chunk the store
+already holds is written again and looks identical to a new one.
+
+At scale the gap is large: an edit that re-chunked 28.5 MiB grew the store by
+17.2 MiB, so the reported figure overstated by 40 %. Locally that is cosmetic.
+Once the store is remote it is the difference between "how much did I upload"
+and "how much did I hash", which is the number a user on a slow connection
+actually wants.
+
+The fix is a store interface change — `Put` reporting whether the object was
+new, or a batched existence query ahead of the write. **Both are decisions for
+the slice that introduces network transfers**, not for now: E24 deliberately
+gives `ObjectStore` only Get/Put/Exists, and widening it for a progress counter
+before there is a transfer to measure would be the wrong order.
+
+Until then the field is named for what it measures.
+
+---
+
+### F-B-02 · `space check` prints every path
+
+**Found by:** [TP-002](../test-plans/TP-002-scale-run.md), EC-105
+
+`fibula space check` lists all safe-to-delete paths — 3,050 lines on the test
+corpus, and one line per asset on a real project. The information a user wants
+from it is the verdict plus anything that blocks it; the full list is noise that
+buries the problems.
+
+Print counts and the problem cases, with the full list behind a flag. The
+`Unversioned` and `Problems` lists must stay fully visible however long they
+are: those are the ones that decide whether data is at risk.

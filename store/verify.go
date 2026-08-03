@@ -68,11 +68,12 @@ func (v *verified) Exists(ctx context.Context, keys []Key) ([]bool, error) {
 
 // Verify checks object bytes against the key they are stored under.
 //
-// It covers five of the six object types completely. The sixth, the file
-// object, cannot be verified this way at all, and that is a consequence of the
-// object model rather than a gap here: the FileID is the hash of the file
-// *content*, not of the serialized file object (E3). Hashing the object bytes
-// would produce something unrelated to the key.
+// It covers four of the six object types completely. Two cannot be verified
+// this way at all, and that is a consequence of the object model rather than a
+// gap here: the FileID is the hash of the file *content*, not of the serialized
+// file object (E3), and since E6 stores a manifest "as an ordinary file object"
+// the same holds for the ManifestID. Hashing the object bytes would produce
+// something unrelated to the key.
 //
 // What is done instead is stated openly, because CLAUDE.md § 4 requires the
 // trust boundary to be documented wherever verification does not happen:
@@ -89,12 +90,17 @@ func (v *verified) Exists(ctx context.Context, keys []Key) ([]bool, error) {
 // VerifyFileContent does that, and the paths where it actually matters — the
 // dirty check before deleting local data, and an asynchronous scrubber — must
 // call it rather than rely on this.
+//
+// Manifests are the exception that closes its own gap: GetManifest always
+// reassembles and hashes, because a manifest is small enough that the complete
+// check is affordable on every read. So the partial check below is the whole
+// story only for asset file objects.
 func Verify(key Key, data []byte) error {
 	if key.IsZero() {
 		return fmt.Errorf("%w: empty key", errs.ErrCorruptObject)
 	}
 
-	if key.kind == format.TypeFile {
+	if key.kind == format.TypeFile || key.kind == format.TypeManifest {
 		return verifyFileObject(key, data)
 	}
 
@@ -112,15 +118,13 @@ func digestFor(kind format.ObjectType, data []byte) (string, error) {
 	switch kind {
 	case format.TypeChunk:
 		return hash.Chunk(data).String(), nil
-	case format.TypeManifest:
-		return hash.Manifest(data).String(), nil
 	case format.TypeVersion:
 		return hash.Version(data).String(), nil
 	case format.TypeGraph:
 		return hash.Graph(data).String(), nil
 	case format.TypeSignature:
 		return hash.Signature(data).String(), nil
-	case format.TypeFile:
+	case format.TypeFile, format.TypeManifest:
 		// Handled by verifyFileObject; reaching here would be a bug.
 		return "", fmt.Errorf("%w: file objects are not hashed over their bytes", errs.ErrCorruptObject)
 	default:

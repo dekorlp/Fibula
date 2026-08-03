@@ -40,8 +40,8 @@ func TestSnapshotReusesTheCache(t *testing.T) {
 	if second.Hashed != 0 {
 		t.Errorf("second snapshot re-read %d files, want none: the cache did not do its job", second.Hashed)
 	}
-	if second.Uploaded != 0 {
-		t.Errorf("second snapshot uploaded %d bytes over an unchanged tree", second.Uploaded)
+	if second.Chunked != 0 {
+		t.Errorf("second snapshot re-chunked %d bytes over an unchanged tree", second.Chunked)
 	}
 	if second.Manifest != first.Manifest {
 		t.Errorf("an unchanged tree produced a different manifest: %s then %s", first.Manifest, second.Manifest)

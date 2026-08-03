@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -59,7 +60,9 @@ func TestZeroKey(t *testing.T) {
 }
 
 // TestVerifyAcceptsHonestObjects walks every type the wrapper can check
-// completely.
+// completely. Manifests are absent deliberately: since E6 stores them as file
+// objects they are structural-only here, like file objects, and
+// TestManifestRoundTrip covers the complete check instead.
 func TestVerifyAcceptsHonestObjects(t *testing.T) {
 	data := []byte("object bytes")
 
@@ -68,7 +71,6 @@ func TestVerifyAcceptsHonestObjects(t *testing.T) {
 		key  Key
 	}{
 		{"chunk", ChunkKey(hash.Chunk(data))},
-		{"manifest", ManifestKey(hash.Manifest(data))},
 		{"version", VersionKey(hash.Version(data))},
 		{"graph", GraphKey(hash.Graph(data))},
 		{"signature", SignatureKey(hash.Signature(data))},
@@ -145,8 +147,11 @@ func (m *memStore) Get(_ context.Context, key Key) ([]byte, error) {
 	return data, nil
 }
 
+// Put copies, as the interface requires: chunks arrive in the splitter's
+// reused buffer, so retaining the slice would store the following chunk's
+// bytes under this chunk's key.
 func (m *memStore) Put(_ context.Context, key Key, data []byte) error {
-	m.objects[key.String()] = data
+	m.objects[key.String()] = bytes.Clone(data)
 	return nil
 }
 
@@ -157,6 +162,20 @@ func (m *memStore) Exists(_ context.Context, keys []Key) ([]bool, error) {
 	}
 	return present, nil
 }
+
+func (m *memStore) count() int { return len(m.objects) }
+
+func (m *memStore) bytesStored() int64 {
+	var total int64
+	for _, data := range m.objects {
+		total += int64(len(data))
+	}
+	return total
+}
+
+// overwrite plants content under an existing key without verifying it, which
+// is what a faulty backend or a holder of a presigned PUT URL can do.
+func (m *memStore) overwrite(key Key, data []byte) { m.objects[key.String()] = data }
 
 func TestVerifyFileContent(t *testing.T) {
 	ctx := context.Background()

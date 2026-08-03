@@ -143,8 +143,8 @@ func ingest(ctx context.Context, t *testing.T, objects store.ObjectStore,
 	if err != nil {
 		t.Fatalf("marshal manifest: %v", err)
 	}
-	manifestID := hash.Manifest(manifestBytes)
-	if err := objects.Put(ctx, store.ManifestKey(manifestID), manifestBytes); err != nil {
+	manifestID, err := store.PutManifest(ctx, objects, manifestBytes)
+	if err != nil {
 		t.Fatalf("put manifest: %v", err)
 	}
 
@@ -197,7 +197,7 @@ func restore(ctx context.Context, t *testing.T, objects store.ObjectStore,
 		t.Fatalf("parse version: %v", err)
 	}
 
-	manifestBytes, err := objects.Get(ctx, store.ManifestKey(version.Manifest))
+	manifestBytes, err := store.GetManifest(ctx, objects, version.Manifest)
 	if err != nil {
 		t.Fatalf("get manifest: %v", err)
 	}

@@ -30,6 +30,7 @@ every coding session.
 | S4 | [archive/S4-versions.md](archive/S4-versions.md) | Done | Version graph, refs, checkout, expiry, GC |
 | S5 | — | Sketch | Reference server, Postgres index, `s3.Store`, auth |
 | S6 | — | Sketch | Dependency graph, extractors, partial checkout |
+| B | [B-found-in-testing.md](B-found-in-testing.md) | Open | Defects found in testing, outside any slice |
 
 ## Milestone: self-hosting after S4
 
@@ -47,6 +48,15 @@ acceptance run used synthetic assets rather than a real Blender project. The
 dedup rate on real asset formats, the behaviour at project scale and the
 behaviour on a network share are unmeasured. That run is the first task of
 phase 1 proper, and its findings are the input for S5 and S6.
+
+**Scale measured on 2026-08-03** ([TP-002](../test-plans/TP-002-scale-run.md)):
+3,050 files and 3.7 GiB through the full loop, with memory bounded at 21 MiB and
+a byte-identical restore. It found that E6 had never been implemented and that
+implementing it opened a data-loss path in GC — both fixed. **Two gaps remain
+from TP-001's list and one is now sharper:** real asset formats (the run can say
+the dedup floor is about one chunk per changed region, but not whether that
+floor is right for a `.blend`), and a network share. The real-project run is
+still the first task of phase 1.
 
 ## S5 and S6 are deliberately unplanned
 

@@ -104,6 +104,14 @@ type ObjectStore interface {
 
 	// Put writes an object. It is idempotent — writing the same hash twice is
 	// not an error — and atomic, so no half object ever becomes visible (E29).
+	//
+	// An implementation must not retain data beyond the call. Chunks arrive
+	// straight from the splitter, whose buffer is reused for the next chunk
+	// (chunk.Splitter.Next, chunk.Sink), so a store that queues the slice for a
+	// later write — a batching or asynchronous backend, which is what a network
+	// store wants to be — stores whatever the buffer holds by then. That is
+	// silent corruption under a correct hash, and the only defence is that the
+	// obligation is stated here: queue a copy, not the slice.
 	Put(ctx context.Context, key Key, data []byte) error
 
 	// Exists reports for each key whether the object is present, in the same

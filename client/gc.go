@@ -212,15 +212,30 @@ func markManifest(ctx context.Context, objects store.ObjectStore, id hash.Manife
 		return nil
 	}
 
-	data, err := objects.Get(ctx, store.ManifestKey(id))
+	// The manifest is chunked (E6), so marking the manifest object alone is not
+	// enough: its chunks are ordinary chunk objects and the sweep would delete
+	// them, taking the history they describe with them. The enumeration comes
+	// from store.ManifestChunkKeys so that this cannot drift from the writer.
+	encoded, err := objects.Get(ctx, store.ManifestKey(id))
 	if err != nil {
 		return fmt.Errorf("read manifest %s: %w", id, err)
+	}
+	keys, err := store.ManifestChunkKeys(encoded, id)
+	if err != nil {
+		return err
+	}
+
+	data, err := store.GetManifest(ctx, objects, id)
+	if err != nil {
+		return err
 	}
 	m, err := object.UnmarshalManifest(data)
 	if err != nil {
 		return err
 	}
-	reachable[store.ManifestKey(id)] = struct{}{}
+	for _, key := range keys {
+		reachable[key] = struct{}{}
+	}
 
 	for _, entry := range m.Entries {
 		if err := markFile(ctx, objects, entry, reachable); err != nil {

@@ -193,9 +193,9 @@ func (s *Space) Checkout(ctx context.Context, ignore *Ignore, target string, opt
 }
 
 func (s *Space) readManifest(ctx context.Context, id hash.ManifestID) (object.Manifest, error) {
-	data, err := s.objects.Get(ctx, store.ManifestKey(id))
+	data, err := store.GetManifest(ctx, s.objects, id)
 	if err != nil {
-		return object.Manifest{}, fmt.Errorf("read manifest %s: %w", id, err)
+		return object.Manifest{}, err
 	}
 	return object.UnmarshalManifest(data)
 }

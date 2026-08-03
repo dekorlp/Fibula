@@ -40,8 +40,14 @@ type SnapshotResult struct {
 	Version  hash.VersionID
 	Manifest hash.ManifestID
 	Files    int
-	Hashed   int   // files that had to be read and chunked
-	Uploaded int64 // bytes of chunk content written to the store
+	Hashed   int // files that had to be read and chunked
+	// Chunked is the size of the file content that was read and cut this
+	// run. It is deliberately not called "uploaded": Put is idempotent, so a
+	// chunk the store already holds is offered and discarded, and counting it
+	// here would overstate what the run actually cost. Reporting the genuinely
+	// new bytes needs Put to say whether the write was new — a store interface
+	// question that belongs with the first network backend (F-S5).
+	Chunked int64
 }
 
 // Snapshot records the working directory as a version.
@@ -87,7 +93,7 @@ func (s *Space) record(ctx context.Context, ignore *Ignore, opts SnapshotOptions
 		if hashed {
 			result.Hashed++
 		}
-		result.Uploaded += uploaded
+		result.Chunked += uploaded
 
 		next.Put(entry)
 		if err := builder.Add(entry.Path, entry.File, entry.Size); err != nil {
@@ -267,9 +273,9 @@ func (s *Space) putManifest(ctx context.Context, builder manifest.Builder) (hash
 		return hash.ManifestID{}, nil, err
 	}
 
-	id := hash.Manifest(data)
-	if err := s.objects.Put(ctx, store.ManifestKey(id), data); err != nil {
-		return hash.ManifestID{}, nil, fmt.Errorf("store manifest: %w", err)
+	id, err := store.PutManifest(ctx, s.objects, data)
+	if err != nil {
+		return hash.ManifestID{}, nil, err
 	}
 	return id, data, nil
 }
