@@ -52,11 +52,23 @@ phase 1 proper, and its findings are the input for S5 and S6.
 **Scale measured on 2026-08-03** ([TP-002](../test-plans/TP-002-scale-run.md)):
 3,050 files and 3.7 GiB through the full loop, with memory bounded at 21 MiB and
 a byte-identical restore. It found that E6 had never been implemented and that
-implementing it opened a data-loss path in GC — both fixed. **Two gaps remain
-from TP-001's list and one is now sharper:** real asset formats (the run can say
-the dedup floor is about one chunk per changed region, but not whether that
-floor is right for a `.blend`), and a network share. The real-project run is
-still the first task of phase 1.
+implementing it opened a data-loss path in GC — both fixed.
+
+**Real project measured on 2026-08-03**
+([TP-004](../test-plans/TP-004-real-project-run.md)): live Blender, real save
+cycles, both compressed and uncompressed. Blender writes byte-deterministically,
+so dedup works at all; an uncompressed `.blend` costs about what the edit was
+worth, a compressed one about half the file every time. Found one defect
+(a BOM disabled the first `.fibulaignore` rule) and one documentation item
+(**F-B-03**).
+
+**The milestone is now discharged except for one item: a network share.**
+`store/fs`'s lock file and flush are written for network filesystems and have
+still never run on one — and TP-002's concurrency case is exactly where they
+matter. Other gaps that remain, but were never part of the milestone: DCC
+formats besides Blender, a project *tree* with external textures and linked
+libraries (which is what S6 exists for), and long time spans for the retention
+buckets.
 
 ## S5 and S6 are deliberately unplanned
 

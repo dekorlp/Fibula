@@ -97,6 +97,46 @@ func TestIgnoreCommentsAndBlankLines(t *testing.T) {
 	}
 }
 
+// TestLeadingBOMDoesNotDisableTheFirstRule covers TP-004 EC-301. On Windows a
+// UTF-8 BOM is the default for PowerShell's Out-File and several editors, so
+// an ignore file written there starts with one. Before the fix it became part
+// of the first pattern, which then matched nothing while every later rule kept
+// working - a silent failure whose symptom points nowhere near its cause.
+func TestLeadingBOMDoesNotDisableTheFirstRule(t *testing.T) {
+	const bom = "\ufeff"
+
+	ignore, err := ParseIgnore(strings.NewReader(bom + "*.blend1\n*.blend2\n"))
+	if err != nil {
+		t.Fatalf("ParseIgnore: %v", err)
+	}
+
+	for _, name := range []string{"scene.blend1", "scene.blend2"} {
+		if !ignore.Match(name, false) {
+			t.Errorf("%s was not ignored - the BOM survived into the pattern", name)
+		}
+	}
+	if ignore.Match("scene.blend", false) {
+		t.Error("the asset itself was ignored")
+	}
+}
+
+// TestBOMOnlyStrippedFromTheFirstLine guards the other direction: a BOM is only
+// a BOM at the start of the file. Elsewhere it is an ordinary character and
+// stripping it would quietly alter a pattern the user meant to write.
+func TestBOMOnlyStrippedFromTheFirstLine(t *testing.T) {
+	ignore, err := ParseIgnore(strings.NewReader("*.tmp\n\ufeffodd.blend\n"))
+	if err != nil {
+		t.Fatalf("ParseIgnore: %v", err)
+	}
+
+	if ignore.Match("odd.blend", false) {
+		t.Error("a mid-file BOM was stripped, changing the pattern")
+	}
+	if !ignore.Match("\ufeffodd.blend", false) {
+		t.Error("the literal pattern no longer matches its own text")
+	}
+}
+
 func TestNilIgnoreMatchesNothing(t *testing.T) {
 	var ignore *Ignore
 
