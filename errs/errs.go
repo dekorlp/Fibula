@@ -87,6 +87,12 @@ var (
 	// ErrLockNotFound reports a lock that does not exist.
 	ErrLockNotFound = errors.New("lock not found")
 
+	// ErrLockingDisabled reports a lock operation on a project that never
+	// turned locking on (E48). Distinct from ErrLockHeld because "the project
+	// does not use locks" and "somebody else has this file" are different
+	// problems with different answers.
+	ErrLockingDisabled = errors.New("locking is not enabled for this project")
+
 	// ErrSpaceBehind reports a commit whose working directory does not descend
 	// from where the ref now points, so recording it would silently drop
 	// whatever moved the ref (E13.3, TP-005 EC-401).
