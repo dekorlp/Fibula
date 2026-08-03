@@ -167,70 +167,6 @@ func (s *Space) putFile(ctx context.Context, result chunk.Result) error {
 	return s.PutFileObject(ctx, result.ID, result.File)
 }
 
-// recordTarget is where a recorded version is published: a new entry on the
-// snapshot timeline, or the ref the space is on.
-type recordTarget interface {
-	// parentOf returns what the new version should name as its parent.
-	parentOf(ctx context.Context, s *Space) (hash.VersionID, bool, error)
-
-	// publish points a ref at the new version.
-	publish(ctx context.Context, s *Space, parent hash.VersionID, hasParent bool,
-		id hash.VersionID, at time.Time) (store.RefName, error)
-}
-
-// snapshotTarget writes a point on the timeline. It gives the version no
-// parent at all: a snapshot is a point in time, and a parent pointer would
-// keep every older snapshot reachable and make the thinning schedule of E14
-// impossible (E12, addendum).
-type snapshotTarget struct{}
-
-func (snapshotTarget) parentOf(context.Context, *Space) (hash.VersionID, bool, error) {
-	return hash.VersionID{}, false, nil
-}
-
-func (snapshotTarget) publish(ctx context.Context, s *Space, _ hash.VersionID, _ bool,
-	id hash.VersionID, at time.Time,
-) (store.RefName, error) {
-	ref, err := snapshotRefName(at, id)
-	if err != nil {
-		return store.RefName{}, err
-	}
-	// Publishing is idempotent. An unchanged tree snapshotted twice in the
-	// same second produces the same manifest, therefore the same version,
-	// therefore the same ref name and value - that is one snapshot recorded
-	// twice, not a conflict.
-	switch existing, err := s.refs.Get(ctx, ref); {
-	case err == nil && existing == id:
-		return ref, nil
-	case err != nil && !errors.Is(err, errs.ErrRefNotFound):
-		return store.RefName{}, fmt.Errorf("publish snapshot: %w", err)
-	}
-
-	if err := s.refs.CompareAndSwap(ctx, ref, hash.VersionID{}, id); err != nil {
-		return store.RefName{}, fmt.Errorf("publish snapshot: %w", err)
-	}
-	return ref, nil
-}
-
-// commitTarget advances the ref the space is on, and the new version names the
-// previous one as its parent. That is the content graph - the history log
-// walks, and the one that is never thinned.
-type commitTarget struct{}
-
-func (commitTarget) parentOf(ctx context.Context, s *Space) (hash.VersionID, bool, error) {
-	return s.refValue(ctx, s.currentRef())
-}
-
-func (commitTarget) publish(ctx context.Context, s *Space, parent hash.VersionID, hasParent bool,
-	id hash.VersionID, _ time.Time,
-) (store.RefName, error) {
-	name := s.currentRef()
-	if err := s.advanceRef(ctx, name, parent, hasParent, id); err != nil {
-		return store.RefName{}, err
-	}
-	return store.LocalRef(name)
-}
-
 // commit writes the manifest and the version and publishes it.
 func (s *Space) commit(ctx context.Context, builder manifest.Builder, opts SnapshotOptions,
 	target recordTarget,
@@ -257,7 +193,7 @@ func (s *Space) commit(ctx context.Context, builder manifest.Builder, opts Snaps
 	if _, err := target.publish(ctx, s, parent, hasParent, versionID, at); err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
-	if err := s.recordHead(versionID, manifestBytes); err != nil {
+	if err := s.recordHead(versionID, manifestBytes, target.advancesBase()); err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
 	return versionID, manifestID, nil
@@ -317,12 +253,26 @@ func (s *Space) putVersion(ctx context.Context, manifestID hash.ManifestID,
 // The ref the space is on does not change here. Taking a snapshot must not
 // move anyone off main - the timeline is a safety net running alongside the
 // history, not a place to work from.
-func (s *Space) recordHead(versionID hash.VersionID, manifestBytes []byte) error {
+func (s *Space) recordHead(versionID hash.VersionID, manifestBytes []byte, advancesBase bool) error {
 	ref, err := store.LocalRef(s.currentRef())
 	if err != nil {
 		return err
 	}
-	if err := s.SetHead(Head{Ref: ref, Version: versionID}); err != nil {
+
+	head := Head{Ref: ref, Version: versionID, Base: versionID}
+	if !advancesBase {
+		// A snapshot leaves the base where it was, so that a commit after any
+		// number of snapshots still compares against the version it actually
+		// descends from. A space with no head yet keeps the zero base, which
+		// reads as "never committed".
+		previous, err := s.Head()
+		if err != nil && !errors.Is(err, errs.ErrRefNotFound) {
+			return err
+		}
+		head.Base = previous.Base
+	}
+
+	if err := s.SetHead(head); err != nil {
 		return err
 	}
 	return s.writeCheckedOutManifest(manifestBytes)

@@ -254,7 +254,9 @@ func (s *Space) pointHeadAt(ctx context.Context, target string, id hash.VersionI
 	if err != nil {
 		return err
 	}
-	if err := s.SetHead(Head{Ref: ref, Version: id}); err != nil {
+	// Checkout sets the base as well: after it, the working directory descends
+	// from exactly this version, which is what a later commit compares against.
+	if err := s.SetHead(Head{Ref: ref, Version: id, Base: id}); err != nil {
 		return err
 	}
 

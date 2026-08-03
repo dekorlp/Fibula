@@ -152,6 +152,23 @@ func (s *Space) currentRef() string {
 	return head.Ref.Name()
 }
 
+// baseVersion is the deliberate version this space descends from, as recorded
+// locally by the last commit or checkout. Auto snapshots do not move it (E12).
+// A space that has never committed has no base, which is a state rather than a
+// failure - hence the bool instead of an error.
+func (s *Space) baseVersion() (hash.VersionID, bool, error) {
+	head, err := s.Head()
+	switch {
+	case errors.Is(err, errs.ErrRefNotFound):
+		return hash.VersionID{}, false, nil
+	case err != nil:
+		return hash.VersionID{}, false, err
+	case head.Base.IsZero():
+		return hash.VersionID{}, false, nil
+	}
+	return head.Base, true, nil
+}
+
 func (s *Space) refValue(ctx context.Context, name string) (hash.VersionID, bool, error) {
 	ref, err := store.LocalRef(name)
 	if err != nil {

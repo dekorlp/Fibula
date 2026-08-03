@@ -79,4 +79,14 @@ var (
 	// match the current one. It is never resolved by overwriting: a lost ref
 	// update is a lost working state (E13).
 	ErrRefConflict = errors.New("ref conflict")
+
+	// ErrSpaceBehind reports a commit whose working directory does not descend
+	// from where the ref now points, so recording it would silently drop
+	// whatever moved the ref (E13.3, TP-005 EC-401).
+	//
+	// The ref machinery cannot catch this: the compare-and-swap succeeds
+	// because the value being replaced really is the one that was read. What
+	// is wrong is one level up - the manifest describes a tree that never
+	// contained the other side's work.
+	ErrSpaceBehind = errors.New("space is behind the ref")
 )

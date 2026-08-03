@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dekorlp/fibula/client"
+	"github.com/dekorlp/fibula/errs"
 )
 
 // version is the client version. Phase 1 makes no compatibility promise, so
@@ -52,11 +53,29 @@ Phase 1: unstable, no compatibility guarantees.
 // errUsage reports a command line the client does not understand.
 var errUsage = errors.New("unknown command")
 
+// behindAdvice is printed alongside ErrSpaceBehind. Refusing the commit is only
+// half an answer - without this the user's next move is a checkout, which
+// throws their working directory away. Snapshotting first is safe precisely
+// because snapshots land on their own ref and cannot collide (E12, TP-005
+// TC-409), so nothing is lost while the situation is sorted out.
+const behindAdvice = `
+Your work is not lost, and it does not have to be:
+
+  fibula snapshot          keep the current directory on the timeline
+  fibula checkout main     take the other state
+  fibula log               see what moved
+
+There is no merge yet, so bringing both sides together is manual for now.
+`
+
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "fibula:", err)
-		if errors.Is(err, errUsage) {
+		switch {
+		case errors.Is(err, errUsage):
 			fmt.Fprint(os.Stderr, "\n", usage)
+		case errors.Is(err, errs.ErrSpaceBehind):
+			fmt.Fprint(os.Stderr, behindAdvice)
 		}
 		os.Exit(1)
 	}
