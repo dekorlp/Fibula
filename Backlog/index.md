@@ -62,13 +62,24 @@ worth, a compressed one about half the file every time. Found one defect
 (a BOM disabled the first `.fibulaignore` rule) and one documentation item
 (**F-B-03**).
 
-**The milestone is now discharged except for one item: a network share.**
-`store/fs`'s lock file and flush are written for network filesystems and have
-still never run on one — and TP-002's concurrency case is exactly where they
-matter. Other gaps that remain, but were never part of the milestone: DCC
-formats besides Blender, a project *tree* with external textures and linked
-libraries (which is what S6 exists for), and long time spans for the retention
-buckets.
+**Network share measured on 2026-08-03**
+([TP-005](../test-plans/TP-005-network-share.md)): the store mechanics work over
+real SMB — `O_EXCL` locking, rename-committed refs, GC, byte-identical restore,
+nothing left behind. Loopback only, so no latency, no dropped connections, and
+critically **one clock**: `breakStaleLock` compares a server-stamped `ModTime`
+against the client's own time, and skew beyond 30 s either expires live locks or
+never expires dead ones. That is the first thing a real-NAS run should target.
+
+**The milestone is discharged as far as this hardware allows.** What remains is
+a real NAS, plus items that were never part of it: DCC formats besides Blender,
+a project *tree* with external textures and linked libraries (which is what S6
+exists for), and long time spans for the retention buckets.
+
+> **TP-005 also found the most severe open defect in the project: F-B-04.**
+> A commit takes its parent from head while describing the local working
+> directory, so two clients sharing a store silently overwrite each other's
+> content — no concurrency required, unrelated to SMB. It needs a decision
+> before S5, not after.
 
 ## S5 and S6 are deliberately unplanned
 

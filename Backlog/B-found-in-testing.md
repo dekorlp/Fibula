@@ -40,6 +40,57 @@ Until then the field is named for what it measures.
 
 ---
 
+### F-B-04 · A commit silently discards another client's work — **critical**
+
+**Spec:** E13.3 (a non-fast-forward is a user decision, never an automatic
+overwrite), E16 (the space stores its checked-out VersionID)
+**Found by:** [TP-005](../test-plans/TP-005-network-share.md), EC-401
+**Blocked on:** nothing technically — blocked on a decision, see below
+
+Two clients sharing a store, no concurrency needed:
+
+```
+alice commits alice.txt
+bob   commits bob.txt three seconds later
+
+head: asset.txt, bob.txt          alice.txt is gone
+log:  bob -> alice -> baseline    looks perfectly linear
+```
+
+`commitTarget.parentOf` (`client/snapshot.go:220`) takes the parent from the
+ref's **current** value in the store, while the manifest is built from the local
+working directory. Nothing checks that the working directory descends from head,
+so a commit claims a parent whose content it does not contain. The lock, the CAS
+and the atomic rename all work correctly — the missing check sits above them.
+
+The space already records its checked-out VersionID (E16), so the comparison
+needs no new state.
+
+Nothing is destroyed in the store (old versions stay reachable through the
+parent chain), but head is wrong and the user gets no signal. For the
+two-artist studio this project targets, it is the first scenario they hit.
+
+**`snapshot` is not affected** (TP-005 TC-409): snapshots CAS against a zero old
+value, so each lands on its own ref and two clients interleave correctly. The
+safety net holds where the deliberate path does not.
+
+**The decision, which is why this is not just fixed:**
+
+- **(a) Reject and stop.** Refuse the commit when the checked-out VersionID
+  differs from the ref. Few lines, honours E13.3 — but the user's only way
+  forward is `checkout`, which discards their working directory. Silent data
+  loss becomes a dead end with a clear message.
+- **(b) Reject and offer a way out.** The same check plus the sync semantics
+  that make it survivable — fetch, and some answer to "my file and theirs both
+  changed". That answer is the conflict/locking strategy still open in
+  `refinements/index.md`, and it belongs with S5.
+
+(a) is strictly better than today and can ship now. (b) is the real fix.
+Recommendation is to do (a) immediately and treat it as the forcing function
+for the S5 conflict discussion.
+
+---
+
 ### F-B-03 · Document that `.blend` files should be saved uncompressed
 
 **Spec:** E3 (chunking parameters are an efficiency question)
