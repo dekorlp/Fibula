@@ -50,6 +50,13 @@ func TestRun(t *testing.T) {
 			args:    []string{"init"},
 			wantErr: errUsage,
 		},
+		{
+			// The flag must be rejected rather than ignored: a user who
+			// mistypes it and gets a summary would read that as the full list.
+			name:    "an unknown space check flag is a usage error",
+			args:    []string{"space", "check", "--everything"},
+			wantErr: errUsage,
+		},
 	}
 
 	for _, tc := range tests {
