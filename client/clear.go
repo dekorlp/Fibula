@@ -141,6 +141,13 @@ func (s *Space) deleteFile(rel string) (int64, error) {
 		return 0, fmt.Errorf("%w: %s became a symbolic link after the check", errs.ErrDirty, rel)
 	}
 
+	// A read-only file cannot be removed on Windows, and this path runs
+	// through the dirty check: failing here would leave the user believing a
+	// space was cleared when it was not (E17, F-S5a-06).
+	if err := s.makeWritable(rel); err != nil {
+		return 0, err
+	}
+
 	if err := os.Remove(abs); err != nil {
 		return 0, fmt.Errorf("delete %s: %w", rel, err)
 	}

@@ -28,7 +28,7 @@ every coding session.
 | S2 | [archive/S2-store.md](archive/S2-store.md) | Done | Store interfaces + `fs.Store`, verification |
 | S3 | [archive/S3-workspace.md](archive/S3-workspace.md) | Done | Local state, space, snapshots, dirty check |
 | S4 | [archive/S4-versions.md](archive/S4-versions.md) | Done | Version graph, refs, checkout, expiry, GC |
-| S5a | [S5a-multi-user.md](S5a-multi-user.md) | Open | Multi-user on a shared store: transfer, conflicts, locking, `sync` |
+| S5a | [archive/S5a-multi-user.md](archive/S5a-multi-user.md) | Done | Multi-user on a shared store: transfer, conflicts, locking, `sync` |
 | S5b | — | Deferred | Reference server, Postgres index, `s3.Store`, auth |
 | S6 | — | Sketch | Dependency graph, extractors, partial checkout |
 | B | [B-found-in-testing.md](B-found-in-testing.md) | Open | Defects found in testing, outside any slice |
