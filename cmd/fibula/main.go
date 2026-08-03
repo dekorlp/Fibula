@@ -171,8 +171,8 @@ func runSnapshot(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(out, "snapshot %s\n  %d files, %d read and chunked, %s written\n",
-		result.Version, result.Files, result.Hashed, humanBytes(result.Uploaded)); err != nil {
+	if _, err := fmt.Fprintf(out, "snapshot %s\n  %d files, %d read, %s chunked\n",
+		result.Version, result.Files, result.Hashed, humanBytes(result.Chunked)); err != nil {
 		return err
 	}
 	return reportBudget(ctx, space, ignore, out)

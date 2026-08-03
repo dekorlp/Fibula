@@ -33,8 +33,8 @@ func runCommit(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 
-	_, err = fmt.Fprintf(out, "version %s\n  %d files, %d read and chunked, %s written\n",
-		result.Version, result.Files, result.Hashed, humanBytes(result.Uploaded))
+	_, err = fmt.Fprintf(out, "version %s\n  %d files, %d read, %s chunked\n",
+		result.Version, result.Files, result.Hashed, humanBytes(result.Chunked))
 	return err
 }
 
