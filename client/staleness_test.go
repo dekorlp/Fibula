@@ -10,8 +10,13 @@ import (
 
 // secondSpaceOn returns another space sharing one store, standing exactly where
 // the first one does - two people who checked out the same state.
+//
+// It checks the files out rather than only copying the head. Setting the head
+// alone leaves an empty directory, which a staleness check does not notice but
+// a merge reads as "this side deleted everything".
 func secondSpaceOn(t *testing.T, storeDir string, first *Space) *Space {
 	t.Helper()
+	ctx := context.Background()
 
 	second, err := Init(t.TempDir(), storeDir)
 	if err != nil {
@@ -21,8 +26,8 @@ func secondSpaceOn(t *testing.T, storeDir string, first *Space) *Space {
 	if err != nil {
 		t.Fatalf("Head of the first space: %v", err)
 	}
-	if err := second.SetHead(head); err != nil {
-		t.Fatalf("SetHead on the second space: %v", err)
+	if _, err := second.Checkout(ctx, &Ignore{}, head.Version.String(), clearOpts()); err != nil {
+		t.Fatalf("Checkout into the second space: %v", err)
 	}
 	return second
 }

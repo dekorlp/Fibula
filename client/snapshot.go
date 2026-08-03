@@ -72,34 +72,14 @@ func (s *Space) Snapshot(ctx context.Context, ignore *Ignore, opts SnapshotOptio
 // version are set (E12), which is what makes restore, diff and checkout work
 // identically for both.
 func (s *Space) record(ctx context.Context, ignore *Ignore, opts SnapshotOptions, target recordTarget) (SnapshotResult, error) {
-	files, err := s.Scan(ctx, ignore)
-	if err != nil {
-		return SnapshotResult{}, err
-	}
-	cache, err := s.LoadCache()
+	scan, err := s.scanWorkingTree(ctx, ignore)
 	if err != nil {
 		return SnapshotResult{}, err
 	}
 
-	next := NewCache()
-	var builder manifest.Builder
-	result := SnapshotResult{Files: len(files)}
-
-	for _, f := range files {
-		entry, uploaded, hashed, err := s.snapshotFile(ctx, cache, f)
-		if err != nil {
-			return SnapshotResult{}, err
-		}
-		if hashed {
-			result.Hashed++
-		}
-		result.Chunked += uploaded
-
-		next.Put(entry)
-		if err := builder.Add(entry.Path, entry.File, entry.Size); err != nil {
-			return SnapshotResult{}, err
-		}
-	}
+	next := scan.cache
+	builder := scan.builder
+	result := SnapshotResult{Files: scan.files, Hashed: scan.hashed, Chunked: scan.chunked}
 
 	result.Version, result.Manifest, err = s.commit(ctx, builder, opts, target)
 	if err != nil {
@@ -114,6 +94,49 @@ func (s *Space) record(ctx context.Context, ignore *Ignore, opts SnapshotOptions
 		return SnapshotResult{}, err
 	}
 	return result, nil
+}
+
+// workingTree is the current state of the directory: every file hashed, with
+// the cache that vouches for it. Shared by record and Sync, which need the same
+// scan for different reasons - one to publish it, one to merge against it.
+type workingTree struct {
+	builder manifest.Builder
+	cache   *Cache
+	files   int
+	hashed  int
+	chunked int64
+}
+
+// scanWorkingTree hashes whatever the cache cannot vouch for and returns the
+// directory as a manifest under construction. Chunks reach the store as a side
+// effect, which is what makes the result usable without a commit.
+func (s *Space) scanWorkingTree(ctx context.Context, ignore *Ignore) (workingTree, error) {
+	files, err := s.Scan(ctx, ignore)
+	if err != nil {
+		return workingTree{}, err
+	}
+	cache, err := s.LoadCache()
+	if err != nil {
+		return workingTree{}, err
+	}
+
+	tree := workingTree{cache: NewCache(), files: len(files)}
+	for _, f := range files {
+		entry, uploaded, hashed, err := s.snapshotFile(ctx, cache, f)
+		if err != nil {
+			return workingTree{}, err
+		}
+		if hashed {
+			tree.hashed++
+		}
+		tree.chunked += uploaded
+
+		tree.cache.Put(entry)
+		if err := tree.builder.Add(entry.Path, entry.File, entry.Size); err != nil {
+			return workingTree{}, err
+		}
+	}
+	return tree, nil
 }
 
 // snapshotFile returns the cache entry for one file, chunking it only if the

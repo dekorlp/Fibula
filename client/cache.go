@@ -55,6 +55,10 @@ func (c *Cache) Lookup(p string) (CacheEntry, bool) {
 // Put records an entry.
 func (c *Cache) Put(entry CacheEntry) { c.entries[entry.Path] = entry }
 
+// Remove forgets a path. Used where a file leaves the working directory
+// without the whole cache being rebuilt, as in a sync.
+func (c *Cache) Remove(p string) { delete(c.entries, p) }
+
 // Paths returns every remembered path, sorted.
 func (c *Cache) Paths() []string {
 	paths := make([]string, 0, len(c.entries))
