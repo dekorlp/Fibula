@@ -81,6 +81,16 @@ func (s *Space) record(ctx context.Context, ignore *Ignore, opts SnapshotOptions
 	builder := scan.builder
 	result := SnapshotResult{Files: scan.files, Hashed: scan.hashed, Chunked: scan.chunked}
 
+	if target.enforcesLocks() {
+		proposed, buildErr := builder.Build()
+		if buildErr != nil {
+			return SnapshotResult{}, buildErr
+		}
+		if err := s.checkLocksForCommit(ctx, proposed, opts.Author, opts.Now); err != nil {
+			return SnapshotResult{}, err
+		}
+	}
+
 	result.Version, result.Manifest, err = s.commit(ctx, builder, opts, target)
 	if err != nil {
 		return SnapshotResult{}, err

@@ -25,6 +25,14 @@ type recordTarget interface {
 	// commit builds on. A snapshot does not: it records the directory as it
 	// stands, without changing what the space descends from.
 	advancesBase() bool
+
+	// enforcesLocks reports whether a foreign lock refuses this operation.
+	//
+	// Only publishing is checked. A snapshot lands on its own ref, touches
+	// nobody else's state and is the safety net that has to work when things
+	// are going wrong - blocking it would take the net away exactly when a
+	// contested file needs preserving (E49, E12).
+	enforcesLocks() bool
 }
 
 // snapshotTarget writes a point on the timeline. It gives the version no
@@ -37,7 +45,8 @@ func (snapshotTarget) parentOf(context.Context, *Space) (hash.VersionID, bool, e
 	return hash.VersionID{}, false, nil
 }
 
-func (snapshotTarget) advancesBase() bool { return false }
+func (snapshotTarget) advancesBase() bool  { return false }
+func (snapshotTarget) enforcesLocks() bool { return false }
 
 func (snapshotTarget) publish(ctx context.Context, s *Space, _ hash.VersionID, _ bool,
 	id hash.VersionID, at time.Time,
@@ -113,7 +122,8 @@ func (commitTarget) parentOf(ctx context.Context, s *Space) (hash.VersionID, boo
 	}
 }
 
-func (commitTarget) advancesBase() bool { return true }
+func (commitTarget) advancesBase() bool  { return true }
+func (commitTarget) enforcesLocks() bool { return true }
 
 func (commitTarget) publish(ctx context.Context, s *Space, parent hash.VersionID, hasParent bool,
 	id hash.VersionID, _ time.Time,

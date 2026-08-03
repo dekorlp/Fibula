@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/dekorlp/fibula/errs"
+	"github.com/dekorlp/fibula/manifest"
+	"github.com/dekorlp/fibula/object"
 	"github.com/dekorlp/fibula/store"
 )
 
@@ -129,11 +131,13 @@ func (s *Space) Locks(ctx context.Context) ([]store.Lock, error) {
 	return s.locks.List(ctx)
 }
 
-// LockedBySomeoneElse returns the locks covering any of paths that belong to
-// somebody other than owner and have not expired.
+// LockedBySomeoneElse returns every live lock held by somebody other than
+// owner. Expired ones are left out: they may be taken over by anyone, so they
+// stop nothing (E51).
 //
-// This is what the commit check will use (F-S5a-07) and what decides which
-// files are marked read-only (F-S5a-06).
+// It is what the commit check acts on, and what will decide which files are
+// marked read-only (F-S5a-06). A project with locking switched off has none,
+// even if locks are still lying in the store.
 func (s *Space) LockedBySomeoneElse(ctx context.Context, owner string, now time.Time) ([]store.Lock, error) {
 	settings, err := s.Settings(ctx)
 	if err != nil || !settings.Locking {
@@ -152,6 +156,69 @@ func (s *Space) LockedBySomeoneElse(ctx context.Context, owner string, now time.
 		}
 	}
 	return foreign, nil
+}
+
+// checkLocksForCommit refuses a commit that would publish a change to a file
+// somebody else holds (E49).
+//
+// This is the enforcement; the read-only attribute is only a reminder, and a
+// tool that saves by delete-and-recreate drops it. Editing is never refused -
+// requiring a lock to work would break invariant 9 - so this is the one place
+// a lock actually stops something.
+//
+// Only paths that changed are checked. Holding a lock on a file you are not
+// touching has to be free, or a project-wide reservation would block everyone
+// from committing anything.
+func (s *Space) checkLocksForCommit(ctx context.Context, next object.Manifest, owner string, now time.Time) error {
+	foreign, err := s.LockedBySomeoneElse(ctx, owner, now)
+	if err != nil || len(foreign) == 0 {
+		return err
+	}
+
+	current, err := s.CheckedOutManifest()
+	if err != nil && !errors.Is(err, errs.ErrRefNotFound) {
+		return err
+	}
+
+	changes := manifest.Diff(current, next)
+	touched := make(map[string]struct{})
+	for _, c := range changes.Changed {
+		touched[c.Path()] = struct{}{}
+	}
+	for _, e := range changes.Removed {
+		touched[e.Path] = struct{}{}
+	}
+	// Added counts too: a locked path can be deleted and recreated, and
+	// recreating it is exactly what the holder reserved it against.
+	for _, e := range changes.Added {
+		touched[e.Path] = struct{}{}
+	}
+	for _, r := range changes.Renamed {
+		touched[r.Before.Path] = struct{}{}
+		touched[r.After.Path] = struct{}{}
+	}
+
+	var blocked []store.Lock
+	for _, lock := range foreign {
+		if _, hit := touched[lock.Path]; hit {
+			blocked = append(blocked, lock)
+		}
+	}
+	if len(blocked) == 0 {
+		return nil
+	}
+	return lockedError(blocked)
+}
+
+// lockedError names every blocking lock rather than only the first, so that
+// one refusal tells the user everything they have to sort out.
+func lockedError(blocked []store.Lock) error {
+	lines := make([]string, len(blocked))
+	for i, lock := range blocked {
+		lines[i] = fmt.Sprintf("%s (held by %s since %s)",
+			lock.Path, lock.Owner, lock.Since.UTC().Format(time.RFC3339))
+	}
+	return fmt.Errorf("%w: %s", errs.ErrLockHeld, strings.Join(lines, ", "))
 }
 
 // requireLocking refuses lock operations on a project that has not turned

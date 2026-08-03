@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"strings"
 	"time"
 
 	"github.com/dekorlp/fibula/client"
@@ -26,20 +27,6 @@ const version = "0.0.0-dev"
 // errUsage reports a command line the client does not understand.
 var errUsage = errors.New("unknown command")
 
-// behindAdvice is printed alongside ErrSpaceBehind. Refusing the commit is only
-// half an answer; sync is the other half (E52).
-//
-// The snapshot line stays as the cautious route: it is safe precisely because
-// snapshots land on their own ref and cannot collide (E12, TP-005 TC-409), so
-// the current directory can be preserved before anything touches it.
-const behindAdvice = `
-  fibula sync              bring your directory onto the current state
-  fibula snapshot          keep the current directory first, if unsure
-
-Files both sides changed are left for you to decide; everything else merges
-on its own.
-`
-
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "fibula:", err)
@@ -48,6 +35,8 @@ func main() {
 			fmt.Fprint(os.Stderr, "\n", usage)
 		case errors.Is(err, errs.ErrSpaceBehind):
 			fmt.Fprint(os.Stderr, behindAdvice)
+		case errors.Is(err, errs.ErrLockHeld):
+			fmt.Fprint(os.Stderr, lockedAdvice)
 		}
 		os.Exit(1)
 	}
@@ -337,7 +326,19 @@ func openHere() (*client.Space, *client.Ignore, error) {
 // validates it on push and rejects a mismatch rather than correcting it (E30),
 // so getting it from the operating system is a starting point and not an
 // identity system.
+// authorEnv overrides who the client acts as.
+//
+// The OS username is the right default and the wrong only option: it is what a
+// lock is attributed to, and two people sharing a machine account would be
+// indistinguishable to every lock in the project. It is also the only way to
+// exercise two identities against one store on a single machine.
+const authorEnv = "FIBULA_AUTHOR"
+
 func currentAuthor() (string, error) {
+	if name := strings.TrimSpace(os.Getenv(authorEnv)); name != "" {
+		return name, nil
+	}
+
 	u, err := user.Current()
 	if err != nil {
 		return "", fmt.Errorf("determine the current user: %w", err)
