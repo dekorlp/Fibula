@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"strings"
 	"time"
 
 	"github.com/dekorlp/fibula/client"
@@ -40,6 +41,17 @@ Files both sides changed are left for you to decide; everything else merges
 on its own.
 `
 
+// lockedAdvice accompanies ErrLockHeld. A refusal without a way forward is
+// half an answer, and the way forward here is a conversation - a lock is a
+// coordination aid, not a permission system (E51).
+const lockedAdvice = `
+  fibula locks             see who holds it and since when
+  fibula snapshot          keep your work while you sort it out
+
+If they are unreachable, 'fibula lock <path> --force' takes it over and records
+that you did. An expired lock needs no --force.
+`
+
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "fibula:", err)
@@ -48,6 +60,8 @@ func main() {
 			fmt.Fprint(os.Stderr, "\n", usage)
 		case errors.Is(err, errs.ErrSpaceBehind):
 			fmt.Fprint(os.Stderr, behindAdvice)
+		case errors.Is(err, errs.ErrLockHeld):
+			fmt.Fprint(os.Stderr, lockedAdvice)
 		}
 		os.Exit(1)
 	}
@@ -337,7 +351,19 @@ func openHere() (*client.Space, *client.Ignore, error) {
 // validates it on push and rejects a mismatch rather than correcting it (E30),
 // so getting it from the operating system is a starting point and not an
 // identity system.
+// authorEnv overrides who the client acts as.
+//
+// The OS username is the right default and the wrong only option: it is what a
+// lock is attributed to, and two people sharing a machine account would be
+// indistinguishable to every lock in the project. It is also the only way to
+// exercise two identities against one store on a single machine.
+const authorEnv = "FIBULA_AUTHOR"
+
 func currentAuthor() (string, error) {
+	if name := strings.TrimSpace(os.Getenv(authorEnv)); name != "" {
+		return name, nil
+	}
+
 	u, err := user.Current()
 	if err != nil {
 		return "", fmt.Errorf("determine the current user: %w", err)
