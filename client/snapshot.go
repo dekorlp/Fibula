@@ -176,6 +176,11 @@ type recordTarget interface {
 	// publish points a ref at the new version.
 	publish(ctx context.Context, s *Space, parent hash.VersionID, hasParent bool,
 		id hash.VersionID, at time.Time) (store.RefName, error)
+
+	// advancesBase reports whether recording this moves the version the next
+	// commit builds on. A snapshot does not: it records the directory as it
+	// stands, without changing what the space descends from.
+	advancesBase() bool
 }
 
 // snapshotTarget writes a point on the timeline. It gives the version no
@@ -187,6 +192,8 @@ type snapshotTarget struct{}
 func (snapshotTarget) parentOf(context.Context, *Space) (hash.VersionID, bool, error) {
 	return hash.VersionID{}, false, nil
 }
+
+func (snapshotTarget) advancesBase() bool { return false }
 
 func (snapshotTarget) publish(ctx context.Context, s *Space, _ hash.VersionID, _ bool,
 	id hash.VersionID, at time.Time,
@@ -217,9 +224,52 @@ func (snapshotTarget) publish(ctx context.Context, s *Space, _ hash.VersionID, _
 // walks, and the one that is never thinned.
 type commitTarget struct{}
 
+// parentOf returns the ref's current value, but only after establishing that
+// this space actually descends from it.
+//
+// Without that check a commit names head as its parent while the manifest is
+// built from a working directory that never contained head's changes, so
+// recording it deletes the other side's work with no signal at all - the
+// automatic overwrite E13.3 forbids (TP-005 EC-401). The compare-and-swap
+// downstream cannot see this: the value it replaces really is the one it read.
+//
+// The rule is that the local head and the ref must agree exactly: both absent
+// (the first commit) or both present and equal. Anything else means the space
+// is not where it thinks it is, and the safe answer is to refuse rather than
+// to guess which side should win.
 func (commitTarget) parentOf(ctx context.Context, s *Space) (hash.VersionID, bool, error) {
-	return s.refValue(ctx, s.currentRef())
+	current, onRef, err := s.refValue(ctx, s.currentRef())
+	if err != nil {
+		return hash.VersionID{}, false, err
+	}
+
+	local, hasLocal, err := s.baseVersion()
+	if err != nil {
+		return hash.VersionID{}, false, err
+	}
+
+	switch {
+	case !hasLocal && !onRef:
+		return hash.VersionID{}, false, nil
+	case hasLocal && onRef && local == current:
+		return current, true, nil
+	case !hasLocal:
+		return hash.VersionID{}, false, fmt.Errorf(
+			"%w: %s is at %s but this space has no history yet; check out first",
+			errs.ErrSpaceBehind, s.currentRef(), current)
+	case !onRef:
+		return hash.VersionID{}, false, fmt.Errorf(
+			"%w: this space is at %s but %s does not exist in the store",
+			errs.ErrSpaceBehind, local, s.currentRef())
+	default:
+		return hash.VersionID{}, false, fmt.Errorf(
+			"%w: %s has moved to %s since this space checked out %s; "+
+				"committing would discard that work",
+			errs.ErrSpaceBehind, s.currentRef(), current, local)
+	}
 }
+
+func (commitTarget) advancesBase() bool { return true }
 
 func (commitTarget) publish(ctx context.Context, s *Space, parent hash.VersionID, hasParent bool,
 	id hash.VersionID, _ time.Time,
@@ -257,7 +307,7 @@ func (s *Space) commit(ctx context.Context, builder manifest.Builder, opts Snaps
 	if _, err := target.publish(ctx, s, parent, hasParent, versionID, at); err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
-	if err := s.recordHead(versionID, manifestBytes); err != nil {
+	if err := s.recordHead(versionID, manifestBytes, target.advancesBase()); err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
 	return versionID, manifestID, nil
@@ -317,12 +367,26 @@ func (s *Space) putVersion(ctx context.Context, manifestID hash.ManifestID,
 // The ref the space is on does not change here. Taking a snapshot must not
 // move anyone off main - the timeline is a safety net running alongside the
 // history, not a place to work from.
-func (s *Space) recordHead(versionID hash.VersionID, manifestBytes []byte) error {
+func (s *Space) recordHead(versionID hash.VersionID, manifestBytes []byte, advancesBase bool) error {
 	ref, err := store.LocalRef(s.currentRef())
 	if err != nil {
 		return err
 	}
-	if err := s.SetHead(Head{Ref: ref, Version: versionID}); err != nil {
+
+	head := Head{Ref: ref, Version: versionID, Base: versionID}
+	if !advancesBase {
+		// A snapshot leaves the base where it was, so that a commit after any
+		// number of snapshots still compares against the version it actually
+		// descends from. A space with no head yet keeps the zero base, which
+		// reads as "never committed".
+		previous, err := s.Head()
+		if err != nil && !errors.Is(err, errs.ErrRefNotFound) {
+			return err
+		}
+		head.Base = previous.Base
+	}
+
+	if err := s.SetHead(head); err != nil {
 		return err
 	}
 	return s.writeCheckedOutManifest(manifestBytes)

@@ -50,6 +50,18 @@ type Config struct {
 type Head struct {
 	Ref     store.RefName
 	Version hash.VersionID
+
+	// Base is the deliberate version this working directory descends from.
+	//
+	// It differs from Version whenever an auto snapshot has been recorded
+	// since, because a snapshot moves what is in the directory without moving
+	// what the next commit builds on - snapshots carry no parent at all (E12).
+	// Keeping the two apart is what lets a commit tell "I am up to date" from
+	// "someone else moved the ref", which is the check that stops it silently
+	// discarding their work (E13.3, TP-005 EC-401).
+	//
+	// Zero means the space has never committed.
+	Base hash.VersionID
 }
 
 // Space is a working copy: a directory, its local state and a storage budget
@@ -190,12 +202,28 @@ func (s *Space) Head() (Head, error) {
 	if err != nil {
 		return Head{}, fmt.Errorf("head: %w", err)
 	}
-	return Head{Ref: ref, Version: version}, nil
+
+	head := Head{Ref: ref, Version: version, Base: version}
+	// base is optional: a space written before it existed falls back to its
+	// recorded version, which is what the old code effectively used. That is
+	// right whenever the last operation was a commit and too permissive when
+	// it was a snapshot - i.e. no worse than before, and self-correcting on
+	// the next commit.
+	if raw, ok := fields["base"]; ok {
+		base, err := hash.ParseVersionID(raw)
+		if err != nil {
+			return Head{}, fmt.Errorf("head: %w", err)
+		}
+		head.Base = base
+	}
+	return head, nil
 }
 
 // SetHead records where the space stands.
 func (s *Space) SetHead(h Head) error {
-	body := "ref\t" + h.Ref.Name() + "\nversion\t" + h.Version.String() + "\n"
+	body := "ref\t" + h.Ref.Name() +
+		"\nversion\t" + h.Version.String() +
+		"\nbase\t" + h.Base.String() + "\n"
 	return writeFileAtomic(filepath.Join(s.stateDir(), headFile), []byte(body))
 }
 

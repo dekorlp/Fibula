@@ -40,7 +40,26 @@ Until then the field is named for what it measures.
 
 ---
 
-### F-B-04 · A commit silently discards another client's work — **critical**
+### F-B-04 · A commit silently discards another client's work — **option (a) done 2026-08-03**
+
+**Fixed in:** `reviews/F-B-04-stale-commit-check.md`
+
+Option (a) shipped: a commit is refused when the space does not descend from the
+ref. Implementing it required splitting `Head` into `Version` (what is in the
+directory) and `Base` (what the next commit builds on), because auto snapshots
+were moving the only field there was.
+
+The CLI prints a way out with the error — `snapshot` to keep the current work,
+then `checkout`. That route is only safe because snapshots land on their own ref
+and cannot collide (TC-409), and it is what turns the refusal from a dead end
+into a detour.
+
+**Option (b) is still open** and belongs with S5: there is no merge, so bringing
+two diverged states together remains manual. The original entry follows.
+
+---
+
+### F-B-04 (original entry) · A commit silently discards another client's work
 
 **Spec:** E13.3 (a non-fast-forward is a user decision, never an automatic
 overwrite), E16 (the space stores its checked-out VersionID)
