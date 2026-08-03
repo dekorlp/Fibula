@@ -305,6 +305,28 @@ knows what the store already has, without re-chunking. Cost: 32 bytes per chunk,
 roughly 3 MB for 200 GB of assets. A real chunk cache would double the storage
 requirement — unacceptable for binary assets.
 
+> **Addendum 2026-08-03 — the head carries two versions, not one.**
+>
+> "Checked-out ref + VersionID" turned out to conflate two things. The recorded
+> version was written by commits *and* auto snapshots, so after a snapshot the
+> space could no longer say which deliberate version its working directory
+> descended from — snapshots carry no parent at all (E12).
+>
+> That gap was the reason a commit could silently discard another client's work
+> ([TP-005](../test-plans/TP-005-network-share.md) EC-401): with nothing to
+> compare against, `parentOf` took the ref's current value and the check that
+> would have caught it could not be written.
+>
+> The head therefore records **`Version`** (what is in the directory, moved by
+> snapshots and commits alike) and **`Base`** (the deliberate version the
+> directory descends from, moved only by commit and checkout). `Base` is what
+> the staleness check compares against the ref, and what
+> [E43](2026-08-03-multi-user.md) uses as the merge base.
+>
+> A space written before this addendum has no `base` field and falls back to its
+> recorded version — correct when its last operation was a commit, and no worse
+> than the previous behaviour otherwise. It self-corrects on the next commit.
+
 ### E17 — Dirty check: two levels of guarantee
 
 The status cache is a heuristic (mtime lies across clock jumps, with tools that

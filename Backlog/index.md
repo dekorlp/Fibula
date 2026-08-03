@@ -28,7 +28,8 @@ every coding session.
 | S2 | [archive/S2-store.md](archive/S2-store.md) | Done | Store interfaces + `fs.Store`, verification |
 | S3 | [archive/S3-workspace.md](archive/S3-workspace.md) | Done | Local state, space, snapshots, dirty check |
 | S4 | [archive/S4-versions.md](archive/S4-versions.md) | Done | Version graph, refs, checkout, expiry, GC |
-| S5 | — | Sketch | Reference server, Postgres index, `s3.Store`, auth |
+| S5a | — | Refined | Multi-user on a shared store: transfer, conflicts, locking, `sync` |
+| S5b | — | Deferred | Reference server, Postgres index, `s3.Store`, auth |
 | S6 | — | Sketch | Dependency graph, extractors, partial checkout |
 | B | [B-found-in-testing.md](B-found-in-testing.md) | Open | Defects found in testing, outside any slice |
 
@@ -87,11 +88,24 @@ Both are sketched below rather than broken into tasks. Writing detailed tickets
 for them now would be exactly the drawing-board planning that CLAUDE.md rejects
 — phase 1 is supposed to produce those requirements, not predict them.
 
-### S5 — Remote (sketch)
+### S5a — Multi-user (refined, not yet planned into tasks)
+
+Decided in [multi-user](../refinements/2026-08-03-multi-user.md), E41–E53:
+`manifest.Merge` in the core (E42), `Head.Base` as the merge base (E43), the
+rule table (E44), transfer rather than merge because phase 1 cannot diverge
+(E45), conflict copies under `.fibula/conflicts/` (E46), optional locking that
+never blocks editing (E48–E51), and `fibula sync` as one command (E52).
+
+This is what F-B-04 (b) needs — the answer to the refusal the fix produces.
+
+### S5b — Remote (deferred, E41)
 
 Reference server with REST `/v1`, Postgres index (batch existence queries, refs
 with CAS per E13), `s3.Store` with presigned URLs (E28), token auth with project
 roles, author validation on push (E30), partial sync over the network.
+
+Deferred because TP-005 showed a shared `fs.Store` on a network share is a
+complete deployment for a studio of two to five people.
 
 ### S6 — Dependency graph (sketch)
 
