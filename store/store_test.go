@@ -298,3 +298,63 @@ func TestRefNameLengthLimit(t *testing.T) {
 		t.Errorf("err = %v, want errs.ErrInvalidRefName", err)
 	}
 }
+
+func TestParseKey(t *testing.T) {
+	valid := hash.Chunk([]byte("content")).String()
+
+	tests := []struct {
+		name   string
+		kind   string
+		digest string
+		want   bool
+	}{
+		{name: "chunk", kind: "chunk", digest: valid, want: true},
+		{name: "file", kind: "file", digest: valid, want: true},
+		{name: "manifest", kind: "manifest", digest: valid, want: true},
+		{name: "version", kind: "version", digest: valid, want: true},
+		{name: "graph", kind: "graph", digest: valid, want: true},
+		{name: "signature", kind: "signature", digest: valid, want: true},
+		{name: "unknown type", kind: "sandwich", digest: valid},
+		{name: "empty type", kind: "", digest: valid},
+		{name: "short digest", kind: "chunk", digest: valid[:32]},
+		{name: "long digest", kind: "chunk", digest: valid + "0"},
+		{name: "uppercase digest", kind: "chunk", digest: strings.ToUpper(valid)},
+		{name: "non-hex digest", kind: "chunk", digest: strings.Repeat("z", 64)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			key, ok := ParseKey(tc.kind, tc.digest)
+
+			if ok != tc.want {
+				t.Fatalf("ok = %v, want %v", ok, tc.want)
+			}
+			if !tc.want {
+				return
+			}
+			if key.Type() != format.ObjectType(tc.kind) || key.Digest() != tc.digest {
+				t.Errorf("ParseKey = %s, want %s/%s", key, tc.kind, tc.digest)
+			}
+		})
+	}
+}
+
+// TestParseKeyRoundTripsEveryConstructor keeps the two doors into Key in step:
+// anything the typed constructors produce must parse back identically.
+func TestParseKeyRoundTripsEveryConstructor(t *testing.T) {
+	data := []byte("content")
+
+	for _, key := range []Key{
+		ChunkKey(hash.Chunk(data)),
+		FileKey(hash.File(data)),
+		ManifestKey(hash.Manifest(data)),
+		VersionKey(hash.Version(data)),
+		GraphKey(hash.Graph(data)),
+		SignatureKey(hash.Signature(data)),
+	} {
+		parsed, ok := ParseKey(string(key.Type()), key.Digest())
+		if !ok || parsed != key {
+			t.Errorf("ParseKey did not round-trip %s", key)
+		}
+	}
+}

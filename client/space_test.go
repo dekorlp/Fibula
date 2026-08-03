@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dekorlp/fibula/errs"
 )
@@ -71,9 +72,11 @@ func TestSnapshotOnlyReadsWhatChanged(t *testing.T) {
 	}
 }
 
-// TestSnapshotChainLinksToItsParent pins E12: the chain is a timeline, so each
-// snapshot points at the one before it.
-func TestSnapshotChainLinksToItsParent(t *testing.T) {
+// TestSnapshotsAreATimelineNotAChain pins the addendum to E12. A snapshot has
+// no parent: a parent pointer would keep every older snapshot reachable and
+// make the thinning schedule of E14 impossible, because the middle of a
+// timeline could never be dropped.
+func TestSnapshotsAreATimelineNotAChain(t *testing.T) {
 	ctx := context.Background()
 	space, _ := newSpace(t)
 
@@ -84,7 +87,9 @@ func TestSnapshotChainLinksToItsParent(t *testing.T) {
 	}
 
 	writeFile(t, space.Root(), "a.bin", "two")
-	second, err := space.Snapshot(ctx, &Ignore{}, snapshotOpts())
+	later := snapshotOpts()
+	later.Now = fixedTime().Add(time.Hour)
+	second, err := space.Snapshot(ctx, &Ignore{}, later)
 	if err != nil {
 		t.Fatalf("second snapshot: %v", err)
 	}
@@ -93,14 +98,55 @@ func TestSnapshotChainLinksToItsParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if len(version.Parents) != 1 || version.Parents[0] != first.Version {
-		t.Errorf("parents = %v, want [%s]", version.Parents, first.Version)
+	if len(version.Parents) != 0 {
+		t.Errorf("parents = %v, want none: a snapshot is a point in time", version.Parents)
 	}
 	if version.Expiry.IsZero() {
 		t.Error("an auto snapshot has no expiry set (E12)")
 	}
 	if version.Message != "" {
 		t.Error("an auto snapshot carries a message (E12)")
+	}
+
+	// Both are on the timeline, in order, each reachable on its own.
+	timeline, err := space.Timeline(ctx)
+	if err != nil {
+		t.Fatalf("Timeline: %v", err)
+	}
+	if len(timeline) != 2 {
+		t.Fatalf("timeline has %d entries, want 2", len(timeline))
+	}
+	if timeline[0].Version != first.Version || timeline[1].Version != second.Version {
+		t.Errorf("timeline = %v, want the two snapshots oldest first", timeline)
+	}
+}
+
+// TestSnapshotIsIdempotentWithinASecond: an unchanged tree snapshotted twice
+// produces the same version, so it is one point on the timeline and not a
+// conflict.
+func TestSnapshotIsIdempotentWithinASecond(t *testing.T) {
+	ctx := context.Background()
+	space, _ := newSpace(t)
+	writeFile(t, space.Root(), "a.bin", "content")
+
+	first, err := space.Snapshot(ctx, &Ignore{}, snapshotOpts())
+	if err != nil {
+		t.Fatalf("first snapshot: %v", err)
+	}
+	second, err := space.Snapshot(ctx, &Ignore{}, snapshotOpts())
+	if err != nil {
+		t.Fatalf("second snapshot: %v", err)
+	}
+	if first.Version != second.Version {
+		t.Errorf("the same tree produced %s and %s", first.Version, second.Version)
+	}
+
+	timeline, err := space.Timeline(ctx)
+	if err != nil {
+		t.Fatalf("Timeline: %v", err)
+	}
+	if len(timeline) != 1 {
+		t.Errorf("timeline has %d entries, want 1", len(timeline))
 	}
 }
 

@@ -207,6 +207,44 @@ expires normally. No mutation of content-addressed objects, and it costs nothing
 The snapshot chain is a **timeline, not a content graph** — it stays linear even
 when the working state changes completely in between.
 
+#### Addendum 2026-08-02 — the timeline is a list of refs, not a parent chain
+
+Discovered while implementing the thinning schedule of E14, and it is a
+contradiction between two decisions rather than an implementation detail.
+
+**E14 requires expiring individual snapshots** — one per hour for a day, one per
+day for a month, one per week for six months. **Parent pointers make that
+impossible.** If snapshot S3 names S2 as its parent, S2 stays reachable for as
+long as S3 exists, so the middle of the timeline can never be thinned. Only the
+newest end could ever be dropped, which is the opposite of what a thinning
+schedule does.
+
+The sentence above already contains the resolution: a timeline is an ordered
+list, a content graph is parent pointers. So:
+
+- **An auto snapshot has no parents.** It is a point in time, not a node in a
+  history.
+- **The timeline is the set of refs** `local/snapshots/<timestamp>-<prefix>`,
+  one per retained snapshot. Expiring one is deleting its ref, and nothing else
+  points at it.
+- **Deliberate versions keep their parent list** (E11) and are walked by `log`
+  as before. That is the content graph, and it is the one that must never be
+  thinned.
+
+*Consequence for garbage collection:* reachability roots are all refs. A
+snapshot whose ref the schedule dropped is unreachable immediately, without any
+special case in the traversal — which is what makes the hard coupling of E14
+("expiring a snapshot never deletes a chunk referenced by a reachable
+deliberate version") fall out of the ordinary reference check rather than
+needing its own rule.
+
+*Supersedes* the phrasing in `Backlog/archive/S3-workspace.md` F-S3-03, which
+said the parent of an auto snapshot is the previous snapshot. That is what S3
+implemented; S4 changes it. Phase 1 gives no compatibility guarantee, and the
+cost is that snapshot chains written by an S3 build are read as unrelated
+snapshots by an S4 build — no data is lost, the ordering is simply taken from
+the ref names instead of from the objects.
+
 ### E13 — Refs: the only mutable structure
 
 A named ref points at a VersionID (`main` as the default).

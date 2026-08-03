@@ -16,13 +16,6 @@ import (
 	"github.com/dekorlp/fibula/store"
 )
 
-// SnapshotRef is the local ref holding the head of the snapshot chain.
-//
-// Auto snapshots are reachable only through this chain, never from a
-// deliberate ref (E12). The chain is a timeline rather than a content graph:
-// it stays linear even when the working state changes completely in between.
-const SnapshotRef = "snapshots"
-
 // SnapshotOptions controls one snapshot.
 type SnapshotOptions struct {
 	// Author is recorded on the version. The server validates it on push and
@@ -59,6 +52,20 @@ type SnapshotResult struct {
 // file whose size or mtime moved is re-chunked, its chunks written to the
 // store, and its new chunk list remembered locally (E16).
 func (s *Space) Snapshot(ctx context.Context, ignore *Ignore, opts SnapshotOptions) (SnapshotResult, error) {
+	opts.Message = ""
+	if opts.Expiry.IsZero() {
+		opts.Expiry = expiryFor(opts.Now)
+	}
+	return s.record(ctx, ignore, opts, snapshotTarget{})
+}
+
+// record scans the working directory, writes everything that changed and
+// commits the result under whichever ref the target names.
+//
+// Snapshot and Commit differ only in the target and in which fields of the
+// version are set (E12), which is what makes restore, diff and checkout work
+// identically for both.
+func (s *Space) record(ctx context.Context, ignore *Ignore, opts SnapshotOptions, target recordTarget) (SnapshotResult, error) {
 	files, err := s.Scan(ctx, ignore)
 	if err != nil {
 		return SnapshotResult{}, err
@@ -88,7 +95,7 @@ func (s *Space) Snapshot(ctx context.Context, ignore *Ignore, opts SnapshotOptio
 		}
 	}
 
-	result.Version, result.Manifest, err = s.commit(ctx, builder, opts)
+	result.Version, result.Manifest, err = s.commit(ctx, builder, opts, target)
 	if err != nil {
 		return SnapshotResult{}, err
 	}
@@ -154,14 +161,80 @@ func (s *Space) putFile(ctx context.Context, result chunk.Result) error {
 	return s.PutFileObject(ctx, result.ID, result.File)
 }
 
-// commit writes the manifest and the version, and advances the snapshot chain.
-func (s *Space) commit(ctx context.Context, builder manifest.Builder, opts SnapshotOptions) (hash.VersionID, hash.ManifestID, error) {
+// recordTarget is where a recorded version is published: a new entry on the
+// snapshot timeline, or the ref the space is on.
+type recordTarget interface {
+	// parentOf returns what the new version should name as its parent.
+	parentOf(ctx context.Context, s *Space) (hash.VersionID, bool, error)
+
+	// publish points a ref at the new version.
+	publish(ctx context.Context, s *Space, parent hash.VersionID, hasParent bool,
+		id hash.VersionID, at time.Time) (store.RefName, error)
+}
+
+// snapshotTarget writes a point on the timeline. It gives the version no
+// parent at all: a snapshot is a point in time, and a parent pointer would
+// keep every older snapshot reachable and make the thinning schedule of E14
+// impossible (E12, addendum).
+type snapshotTarget struct{}
+
+func (snapshotTarget) parentOf(context.Context, *Space) (hash.VersionID, bool, error) {
+	return hash.VersionID{}, false, nil
+}
+
+func (snapshotTarget) publish(ctx context.Context, s *Space, _ hash.VersionID, _ bool,
+	id hash.VersionID, at time.Time,
+) (store.RefName, error) {
+	ref, err := snapshotRefName(at, id)
+	if err != nil {
+		return store.RefName{}, err
+	}
+	// Publishing is idempotent. An unchanged tree snapshotted twice in the
+	// same second produces the same manifest, therefore the same version,
+	// therefore the same ref name and value - that is one snapshot recorded
+	// twice, not a conflict.
+	switch existing, err := s.refs.Get(ctx, ref); {
+	case err == nil && existing == id:
+		return ref, nil
+	case err != nil && !errors.Is(err, errs.ErrRefNotFound):
+		return store.RefName{}, fmt.Errorf("publish snapshot: %w", err)
+	}
+
+	if err := s.refs.CompareAndSwap(ctx, ref, hash.VersionID{}, id); err != nil {
+		return store.RefName{}, fmt.Errorf("publish snapshot: %w", err)
+	}
+	return ref, nil
+}
+
+// commitTarget advances the ref the space is on, and the new version names the
+// previous one as its parent. That is the content graph - the history log
+// walks, and the one that is never thinned.
+type commitTarget struct{}
+
+func (commitTarget) parentOf(ctx context.Context, s *Space) (hash.VersionID, bool, error) {
+	return s.refValue(ctx, s.currentRef())
+}
+
+func (commitTarget) publish(ctx context.Context, s *Space, parent hash.VersionID, hasParent bool,
+	id hash.VersionID, _ time.Time,
+) (store.RefName, error) {
+	name := s.currentRef()
+	if err := s.advanceRef(ctx, name, parent, hasParent, id); err != nil {
+		return store.RefName{}, err
+	}
+	return store.LocalRef(name)
+}
+
+// commit writes the manifest and the version and publishes it.
+func (s *Space) commit(ctx context.Context, builder manifest.Builder, opts SnapshotOptions,
+	target recordTarget,
+) (hash.VersionID, hash.ManifestID, error) {
 	manifestID, manifestBytes, err := s.putManifest(ctx, builder)
 	if err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
 
-	parent, hasParent, err := s.snapshotHead(ctx)
+	parent, hasParent, err := target.parentOf(ctx, s)
 	if err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
@@ -170,7 +243,12 @@ func (s *Space) commit(ctx context.Context, builder manifest.Builder, opts Snaps
 	if err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
-	if err := s.advanceSnapshotChain(ctx, parent, hasParent, versionID); err != nil {
+
+	at := opts.Now
+	if at.IsZero() {
+		at = time.Now()
+	}
+	if _, err := target.publish(ctx, s, parent, hasParent, versionID, at); err != nil {
 		return hash.VersionID{}, hash.ManifestID{}, err
 	}
 	if err := s.recordHead(versionID, manifestBytes); err != nil {
@@ -229,8 +307,12 @@ func (s *Space) putVersion(ctx context.Context, manifestID hash.ManifestID,
 // recordHead points the space at the new version and keeps its manifest
 // locally, so that status, clear and restore do not need the store to know
 // what the space is supposed to contain (E16).
+//
+// The ref the space is on does not change here. Taking a snapshot must not
+// move anyone off main - the timeline is a safety net running alongside the
+// history, not a place to work from.
 func (s *Space) recordHead(versionID hash.VersionID, manifestBytes []byte) error {
-	ref, err := store.LocalRef(SnapshotRef)
+	ref, err := store.LocalRef(s.currentRef())
 	if err != nil {
 		return err
 	}
@@ -238,38 +320,6 @@ func (s *Space) recordHead(versionID hash.VersionID, manifestBytes []byte) error
 		return err
 	}
 	return s.writeCheckedOutManifest(manifestBytes)
-}
-
-func (s *Space) snapshotHead(ctx context.Context) (hash.VersionID, bool, error) {
-	ref, err := store.LocalRef(SnapshotRef)
-	if err != nil {
-		return hash.VersionID{}, false, err
-	}
-
-	current, err := s.refs.Get(ctx, ref)
-	if errors.Is(err, errs.ErrRefNotFound) {
-		return hash.VersionID{}, false, nil
-	}
-	if err != nil {
-		return hash.VersionID{}, false, fmt.Errorf("read snapshot chain: %w", err)
-	}
-	return current, true, nil
-}
-
-func (s *Space) advanceSnapshotChain(ctx context.Context, parent hash.VersionID, hasParent bool, next hash.VersionID) error {
-	ref, err := store.LocalRef(SnapshotRef)
-	if err != nil {
-		return err
-	}
-
-	expected := hash.VersionID{}
-	if hasParent {
-		expected = parent
-	}
-	if err := s.refs.CompareAndSwap(ctx, ref, expected, next); err != nil {
-		return fmt.Errorf("advance snapshot chain: %w", err)
-	}
-	return nil
 }
 
 // writeCheckedOutManifest keeps the manifest of the current state locally, so

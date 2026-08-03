@@ -31,9 +31,17 @@ Commands:
   init <store>       create a space here, pointing at a store directory
   status             what changed since the last snapshot
   snapshot           record the working directory as an auto snapshot
+  commit -m <msg>    record it as a deliberate version, which never expires
+  log                deliberate history, newest first
+  snapshots          the snapshot timeline
+  promote <version>  turn a snapshot into a deliberate version
+  checkout <target>  put the working directory into the state of a ref or version
+  diff <a> <b>       what changed between two states
   space check        report whether the space could be cleared safely
   space clear        delete asset files that are provably in the store
   restore            write the current version back into the working directory
+  expire             apply the thinning schedule to the snapshot timeline
+  gc [--dry-run]     delete store objects nothing reachable references
   version            print the client version
   help               print this message
 
@@ -61,26 +69,44 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 
-	switch args[0] {
-	case "version":
-		_, err := fmt.Fprintf(out, "fibula %s\n", version)
-		return err
-	case "help", "-h", "--help":
-		_, err := fmt.Fprint(out, usage)
-		return err
-	case "init":
-		return runInit(args[1:], out)
-	case "status":
-		return runStatus(ctx, out)
-	case "snapshot":
-		return runSnapshot(ctx, out)
-	case "space":
-		return runSpace(ctx, args[1:], out)
-	case "restore":
-		return runRestore(ctx, out)
-	default:
-		return fmt.Errorf("%w: %q", errUsage, args[0])
+	if handler, ok := commands[args[0]]; ok {
+		return handler(ctx, args[1:], out)
 	}
+	return fmt.Errorf("%w: %q", errUsage, args[0])
+}
+
+// handler is one command. Every command takes the same shape so that dispatch
+// is a table rather than a switch that grows a case per feature.
+type handler func(ctx context.Context, args []string, out io.Writer) error
+
+var commands = map[string]handler{
+	"version":   func(_ context.Context, _ []string, out io.Writer) error { return printVersion(out) },
+	"help":      func(_ context.Context, _ []string, out io.Writer) error { return printUsage(out) },
+	"-h":        func(_ context.Context, _ []string, out io.Writer) error { return printUsage(out) },
+	"--help":    func(_ context.Context, _ []string, out io.Writer) error { return printUsage(out) },
+	"init":      func(_ context.Context, args []string, out io.Writer) error { return runInit(args, out) },
+	"status":    func(ctx context.Context, _ []string, out io.Writer) error { return runStatus(ctx, out) },
+	"snapshot":  func(ctx context.Context, _ []string, out io.Writer) error { return runSnapshot(ctx, out) },
+	"commit":    runCommit,
+	"log":       func(ctx context.Context, _ []string, out io.Writer) error { return runLog(ctx, out) },
+	"snapshots": func(ctx context.Context, _ []string, out io.Writer) error { return runSnapshots(ctx, out) },
+	"promote":   runPromote,
+	"checkout":  runCheckout,
+	"diff":      runDiff,
+	"expire":    func(ctx context.Context, _ []string, out io.Writer) error { return runExpire(ctx, out) },
+	"gc":        runGC,
+	"space":     runSpace,
+	"restore":   func(ctx context.Context, _ []string, out io.Writer) error { return runRestore(ctx, out) },
+}
+
+func printVersion(out io.Writer) error {
+	_, err := fmt.Fprintf(out, "fibula %s\n", version)
+	return err
+}
+
+func printUsage(out io.Writer) error {
+	_, err := fmt.Fprint(out, usage)
+	return err
 }
 
 func runInit(args []string, out io.Writer) error {

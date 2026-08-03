@@ -58,11 +58,20 @@ sovereignty requirements: self-hosted, EU, open standard.
 
 ## Status
 
-Usable, and not yet trustworthy enough to rely on. The object format, the
-chunker, the store and the working copy all work end to end: you can `init` a
-space, `snapshot` it, `space clear` it and `restore` it against a plain
-directory. What is missing is the version graph — deliberate versions, named
-history, checkout, expiry and garbage collection — and everything remote.
+**S0–S4 are complete, which is the milestone the backlog names:** an `fs.Store`
+on a second disk or a NAS share is a fully valid deployment, and the loop
+`init → commit → snapshot → checkout → space clear → restore → expire → gc`
+works end to end with no server, no S3 and no Postgres.
+
+What that does *not* mean is that it has been proven on real work. The
+acceptance run for the milestone
+([test-plans/TP-001](test-plans/TP-001-self-hosting-dry-run.md)) used synthetic
+assets, so the dedup rate on real `.blend` and `.exr` files, the behaviour at
+project scale and the behaviour on a network share are all still unmeasured.
+That run is what phase 1 is for.
+
+Missing entirely: everything remote (server, sync, S3) and the dependency
+graph.
 
 - [refinements/](refinements/) — **the source of truth.** Architectural
   decisions live here as numbered entries (`E1`, `E2`, …), referenceable from
@@ -71,9 +80,8 @@ history, checkout, expiry and garbage collection — and everything remote.
 - [Backlog/](Backlog/) — work items, grouped into slices. Overview in
   [Backlog/index.md](Backlog/index.md).
 
-With slices S0 to S4 done, Fibula is usable for its own purpose: an `fs.Store`
-on a second disk or a NAS share is a fully valid deployment. No server, no S3,
-no Postgres required.
+- [test-plans/](test-plans/) — manual test runs and what they found. Overview
+  in [TEST_PLANS.md](test-plans/TEST_PLANS.md).
 
 ## Repository layout
 
