@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -74,6 +75,11 @@ type Space struct {
 	objects store.ObjectStore
 	refs    store.RefStore
 
+	// settings is the project configuration, which lives in the store rather
+	// than here: two clients must not disagree about whether locking is in
+	// force or when a lock expires (E51).
+	settings store.SettingsStore
+
 	// local holds file objects for the working tree, so that the chunk list of
 	// an unchanged file is known without re-chunking it (E16). It is a chunk
 	// list cache, not a chunk cache: a real chunk cache would double the disk
@@ -143,8 +149,12 @@ func Open(dir string) (*Space, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open local file objects: %w", err)
 	}
+	settings, err := fs.OpenSettings(config.Store)
+	if err != nil {
+		return nil, fmt.Errorf("open store settings: %w", err)
+	}
 
-	return &Space{root: root, config: config, objects: objects, refs: refs, local: local}, nil
+	return &Space{root: root, config: config, objects: objects, refs: refs, local: local, settings: settings}, nil
 }
 
 func findRoot(dir string) (string, error) {
@@ -176,6 +186,20 @@ func (s *Space) Objects() store.ObjectStore { return s.objects }
 
 // Refs is the ref store of the configured store.
 func (s *Space) Refs() store.RefStore { return s.refs }
+
+// Settings returns the project configuration held by the store (E51).
+//
+// It is read from the store on every call rather than cached at open time,
+// because another client may have changed it since - and a stale "locking is
+// off" is exactly the answer that must not be given.
+func (s *Space) Settings(ctx context.Context) (store.Settings, error) {
+	return s.settings.Settings(ctx)
+}
+
+// SetSettings replaces the project configuration.
+func (s *Space) SetSettings(ctx context.Context, settings store.Settings) error {
+	return s.settings.SetSettings(ctx, settings)
+}
 
 func (s *Space) stateDir() string { return filepath.Join(s.root, SpaceDir) }
 

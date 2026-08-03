@@ -473,6 +473,27 @@ The **index deliberately does not appear as a third interface**: existence queri
 are store operations; whether an implementation answers via Postgres or via
 `stat()` is none of the caller's business.
 
+> **Addendum 2026-08-03 — a third interface, `SettingsStore`.**
+>
+> [E51](2026-08-03-multi-user.md) puts project-wide configuration in the store:
+> whether locking is in force and how long a lock survives. Two clients must not
+> disagree about either, and a freshly initialized space has to find the rule
+> without being told it exists.
+>
+> That state is mutable and not content-addressed, which is `RefStore`'s
+> category — but the access patterns share nothing. A ref is compare-and-swapped
+> by name and read constantly; settings are read whole and written by hand
+> perhaps twice in a project's life. Folding them together would repeat exactly
+> the conflation this entry avoids between objects and refs, so it is a third
+> interface rather than three more methods on the second.
+>
+> The heading stays as written. "Two interfaces, not one" was about keeping
+> immutable and mutable state apart, and that argument is unchanged — this adds
+> a third kind of state, it does not merge the first two.
+>
+> A store with no settings recorded reports the zero value, which reads as
+> "locking disabled": the behaviour every store had before this existed.
+
 ### E25 — `Delete` does not belong in `ObjectStore`
 
 Deletion lives in a separate `GCStore` that only the admin path receives.
