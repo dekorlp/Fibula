@@ -40,6 +40,8 @@ func runSync(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	refreshLockAttributes(ctx, space, ignore, out)
+
 	if result.AlreadyCurrent {
 		_, err := fmt.Fprintln(out, "already up to date")
 		return err

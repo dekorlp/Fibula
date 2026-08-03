@@ -82,6 +82,8 @@ func runLock(ctx context.Context, args []string, out io.Writer) error {
 	})
 	// Whatever was taken before an error is reported anyway: a half-finished
 	// run the user cannot see is how files end up reserved by accident.
+	refreshLockAttributes(ctx, space, ignore, out)
+
 	for _, lock := range taken {
 		verb := "locked"
 		if lock.BrokenFrom != "" {
@@ -113,8 +115,25 @@ func runUnlock(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	refreshLockAttributes(ctx, space, ignore, out)
 	_, err = fmt.Fprintf(out, "released %d lock(s)\n", released)
 	return err
+}
+
+// refreshLockAttributes marks files somebody else holds read-only, so the
+// refusal arrives when the tool tries to save rather than at commit time
+// (E49). It is best effort by design: the attribute is a reminder, and failing
+// to set it must never stop the operation that just succeeded.
+func refreshLockAttributes(ctx context.Context, space *client.Space, ignore *client.Ignore, out io.Writer) {
+	owner, err := authorFor(space)
+	if err != nil {
+		return
+	}
+	marked, err := space.ApplyLockAttributes(ctx, ignore, owner, time.Now())
+	if err != nil || marked == 0 {
+		return
+	}
+	fmt.Fprintf(out, "%d file(s) marked read-only, held by others\n", marked) //nolint:errcheck // advisory output
 }
 
 // printLostLocks reports locks this space believed it held and no longer does,
