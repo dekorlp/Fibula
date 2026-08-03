@@ -27,31 +27,6 @@ const version = "0.0.0-dev"
 // errUsage reports a command line the client does not understand.
 var errUsage = errors.New("unknown command")
 
-// behindAdvice is printed alongside ErrSpaceBehind. Refusing the commit is only
-// half an answer; sync is the other half (E52).
-//
-// The snapshot line stays as the cautious route: it is safe precisely because
-// snapshots land on their own ref and cannot collide (E12, TP-005 TC-409), so
-// the current directory can be preserved before anything touches it.
-const behindAdvice = `
-  fibula sync              bring your directory onto the current state
-  fibula snapshot          keep the current directory first, if unsure
-
-Files both sides changed are left for you to decide; everything else merges
-on its own.
-`
-
-// lockedAdvice accompanies ErrLockHeld. A refusal without a way forward is
-// half an answer, and the way forward here is a conversation - a lock is a
-// coordination aid, not a permission system (E51).
-const lockedAdvice = `
-  fibula locks             see who holds it and since when
-  fibula snapshot          keep your work while you sort it out
-
-If they are unreachable, 'fibula lock <path> --force' takes it over and records
-that you did. An expired lock needs no --force.
-`
-
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "fibula:", err)
