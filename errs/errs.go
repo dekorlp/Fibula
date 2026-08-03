@@ -80,6 +80,13 @@ var (
 	// update is a lost working state (E13).
 	ErrRefConflict = errors.New("ref conflict")
 
+	// ErrLockHeld reports an operation refused because somebody else holds the
+	// file lock, or because the caller is not its owner (E49).
+	ErrLockHeld = errors.New("file is locked")
+
+	// ErrLockNotFound reports a lock that does not exist.
+	ErrLockNotFound = errors.New("lock not found")
+
 	// ErrSpaceBehind reports a commit whose working directory does not descend
 	// from where the ref now points, so recording it would silently drop
 	// whatever moved the ref (E13.3, TP-005 EC-401).
