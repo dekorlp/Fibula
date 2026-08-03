@@ -47,7 +47,16 @@ func ParseIgnore(r io.Reader) (*Ignore, error) {
 	scanner := bufio.NewScanner(r)
 
 	for line := 1; scanner.Scan(); line++ {
-		rule, ok, err := parseIgnoreLine(scanner.Text())
+		text := scanner.Text()
+		if line == 1 {
+			// A UTF-8 BOM is the default rather than the exception on Windows:
+			// PowerShell's Out-File and several editors write one. Left in
+			// place it becomes part of the first pattern, which then silently
+			// matches nothing while every later rule works (TP-004 EC-301).
+			text = strings.TrimPrefix(text, "\ufeff")
+		}
+
+		rule, ok, err := parseIgnoreLine(text)
 		if err != nil {
 			return nil, fmt.Errorf("%s line %d: %w", IgnoreFile, line, err)
 		}

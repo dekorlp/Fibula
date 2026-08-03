@@ -40,6 +40,31 @@ Until then the field is named for what it measures.
 
 ---
 
+### F-B-03 · Document that `.blend` files should be saved uncompressed
+
+**Spec:** E3 (chunking parameters are an efficiency question)
+**Found by:** [TP-004](../test-plans/TP-004-real-project-run.md), EC-303
+**Blocked on:** nothing — it is a README section, waiting only for the README to
+have a usage part
+
+Measured over six editing cycles on a real `.blend`: an uncompressed file costs
+roughly what the edit was worth (1.4 % of the file for a material tweak, 30 % for
+a whole-mesh displace), while a compressed one costs **~50 % every time**,
+regardless of the edit. A stateful compressor turns any local change into a
+global one from that offset onwards.
+
+At small file sizes compression still wins overall, because the 4× smaller
+baseline outweighs the worse incremental behaviour. It inverts with size: for
+the same local mesh edit, going from a 16 MiB to a 66 MiB scene multiplied the
+uncompressed cost by 1.4 and the compressed cost by 4.4. Uncompressed is
+approximately O(edit), compressed is O(file).
+
+**No code change.** Fibula behaves correctly either way; users just need to know.
+The natural home is a "working with DCC tools" section, which is also where the
+`.blend1` note from EC-302 belongs.
+
+---
+
 ### F-B-02 · `space check` prints every path — **done 2026-08-03**
 
 **Found by:** [TP-002](../test-plans/TP-002-scale-run.md), EC-105
