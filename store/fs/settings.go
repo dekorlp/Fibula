@@ -95,24 +95,39 @@ func (s *settingsStore) SetSettings(ctx context.Context, settings store.Settings
 	body := "locking\t" + strconv.FormatBool(settings.Locking) + "\n" +
 		"lock_expiry_seconds\t" + strconv.FormatInt(int64(settings.Expiry().Seconds()), 10) + "\n"
 
-	f, err := os.CreateTemp(s.root, "settings-*")
+	if err := replaceFile(s.path(), []byte(body)); err != nil {
+		return fmt.Errorf("write settings: %w", err)
+	}
+	return nil
+}
+
+// replaceFile writes state through a temporary file and a rename, so that an
+// interrupted write cannot leave half a value behind.
+//
+// Used for the store's mutable, non content-addressed state - settings and
+// locks. Objects do not go through here: they have their own path with the
+// hash verification that this state has no equivalent of.
+func replaceFile(target string, data []byte) error {
+	dir := filepath.Dir(target)
+	if err := os.MkdirAll(dir, dirPerm); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+
+	f, err := os.CreateTemp(dir, "state-*")
 	if err != nil {
-		return fmt.Errorf("create temporary settings: %w", err)
+		return fmt.Errorf("create temporary file: %w", err)
 	}
 	temp := f.Name()
 	defer os.Remove(temp) //nolint:errcheck // a no-op once the rename succeeded
 
-	if err := writeAndSync(f, []byte(body)); err != nil {
+	if err := writeAndSync(f, data); err != nil {
 		_ = f.Close() //nolint:errcheck // the write already failed and is being reported
-		return fmt.Errorf("write settings: %w", err)
+		return err
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("close settings: %w", err)
+		return fmt.Errorf("close temporary file: %w", err)
 	}
-	if err := os.Rename(temp, s.path()); err != nil {
-		return fmt.Errorf("commit settings: %w", err)
-	}
-	return nil
+	return os.Rename(temp, target)
 }
 
 var _ store.SettingsStore = (*settingsStore)(nil)
