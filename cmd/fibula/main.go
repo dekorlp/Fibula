@@ -128,8 +128,12 @@ func runStatus(ctx context.Context, out io.Writer) error {
 		if _, err := fmt.Fprintf(out, "clean, %d files unchanged\n", status.Unchanged); err != nil {
 			return err
 		}
-		// Still reported: a clean directory can hold an unfinished decision.
-		return printPendingConflicts(space, out)
+		// Still reported: a clean directory can hold an unfinished decision,
+		// and a lock can have been taken while nothing changed here.
+		if err := printPendingConflicts(space, out); err != nil {
+			return err
+		}
+		return printLostLocks(ctx, space, out)
 	}
 
 	printList(out, "added", status.Added)
@@ -138,7 +142,10 @@ func runStatus(ctx context.Context, out io.Writer) error {
 	if _, err = fmt.Fprintf(out, "%d unchanged\n", status.Unchanged); err != nil {
 		return err
 	}
-	return printPendingConflicts(space, out)
+	if err := printPendingConflicts(space, out); err != nil {
+		return err
+	}
+	return printLostLocks(ctx, space, out)
 }
 
 func runSnapshot(ctx context.Context, out io.Writer) error {
@@ -147,7 +154,7 @@ func runSnapshot(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	author, err := currentAuthor()
+	author, err := authorFor(space)
 	if err != nil {
 		return err
 	}
@@ -261,7 +268,7 @@ func runSpaceClear(ctx context.Context, args []string, out io.Writer) error {
 		}
 		opts.IncludeIgnored = true
 	}
-	if opts.Author, err = currentAuthor(); err != nil {
+	if opts.Author, err = authorFor(space); err != nil {
 		return err
 	}
 
@@ -333,6 +340,19 @@ func openHere() (*client.Space, *client.Ignore, error) {
 // indistinguishable to every lock in the project. It is also the only way to
 // exercise two identities against one store on a single machine.
 const authorEnv = "FIBULA_AUTHOR"
+
+// authorFor resolves who this space acts as: the environment wins so a run can
+// be overridden without editing anything, then the space's own configuration,
+// then the OS user as the default that needs no setup.
+func authorFor(space *client.Space) (string, error) {
+	if name := strings.TrimSpace(os.Getenv(authorEnv)); name != "" {
+		return name, nil
+	}
+	if name := strings.TrimSpace(space.Config().Author); name != "" {
+		return name, nil
+	}
+	return currentAuthor()
+}
 
 func currentAuthor() (string, error) {
 	if name := strings.TrimSpace(os.Getenv(authorEnv)); name != "" {

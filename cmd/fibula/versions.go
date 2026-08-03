@@ -21,7 +21,7 @@ func runCommit(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	author, err := currentAuthor()
+	author, err := authorFor(space)
 	if err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func runPromote(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	author, err := currentAuthor()
+	author, err := authorFor(space)
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func runCheckout(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	author, err := currentAuthor()
+	author, err := authorFor(space)
 	if err != nil {
 		return err
 	}

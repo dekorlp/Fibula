@@ -57,7 +57,9 @@ func (s *Space) Lock(ctx context.Context, ignore *Ignore, req LockRequest) ([]st
 		}
 		taken = append(taken, lock)
 	}
-	return taken, nil
+	// Remembered after the fact, so a failure partway through records exactly
+	// what was actually taken.
+	return taken, s.rememberLocks(taken)
 }
 
 // lockOne takes a single path, taking over where that is allowed.
@@ -97,6 +99,7 @@ func (s *Space) Unlock(ctx context.Context, ignore *Ignore, pattern, owner strin
 	}
 
 	released := 0
+	var freed []string
 	for _, p := range paths {
 		if _, err := s.locks.Get(ctx, p); err != nil {
 			continue // not locked; releasing a free path is not an error
@@ -107,9 +110,10 @@ func (s *Space) Unlock(ctx context.Context, ignore *Ignore, pattern, owner strin
 		if err := s.locks.Release(ctx, p, owner); err != nil {
 			return released, err
 		}
+		freed = append(freed, p)
 		released++
 	}
-	return released, nil
+	return released, s.forgetLocks(freed)
 }
 
 // ownerOf returns whoever actually holds a lock, which is how force releases
