@@ -267,9 +267,9 @@ func (s *Space) putManifest(ctx context.Context, builder manifest.Builder) (hash
 		return hash.ManifestID{}, nil, err
 	}
 
-	id := hash.Manifest(data)
-	if err := s.objects.Put(ctx, store.ManifestKey(id), data); err != nil {
-		return hash.ManifestID{}, nil, fmt.Errorf("store manifest: %w", err)
+	id, err := store.PutManifest(ctx, s.objects, data)
+	if err != nil {
+		return hash.ManifestID{}, nil, err
 	}
 	return id, data, nil
 }

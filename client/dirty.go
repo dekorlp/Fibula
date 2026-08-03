@@ -251,9 +251,9 @@ func (s *Space) readVersion(ctx context.Context, id hash.VersionID) (object.Vers
 }
 
 func (s *Space) collectManifestFiles(ctx context.Context, id hash.ManifestID, reachable map[hash.FileID]object.File) error {
-	data, err := s.objects.Get(ctx, store.ManifestKey(id))
+	data, err := store.GetManifest(ctx, s.objects, id)
 	if err != nil {
-		return fmt.Errorf("read manifest %s: %w", id, err)
+		return err
 	}
 	m, err := object.UnmarshalManifest(data)
 	if err != nil {
